@@ -1,0 +1,199 @@
+// initial extensions to gradle
+buildscript {
+    ext {
+        springBootVersion = '1.5.18.RELEASE'
+        springCloudVersion = 'Edgware.SR5'
+    }
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "io.spring.gradle:dependency-management-plugin:1.0.0.RELEASE"
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+        classpath group: 'com.cinnober.gradle', name: 'semver-git', version: '2.2.1'
+        classpath 'org.owasp:dependency-check-gradle:1.4.5.1'
+    }
+}
+
+// code
+apply plugin: "io.spring.dependency-management"
+apply plugin: 'java'
+apply plugin: 'org.springframework.boot'
+
+// code quality
+apply plugin: 'jacoco'
+apply plugin: 'org.owasp.dependencycheck'
+
+// IDEs
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+// publishing
+apply plugin: 'com.cinnober.gradle.semver-git'
+
+// Needed for docker
+apply plugin: 'maven-publish'
+
+// XXX please change with your commits according to http://semver.org/
+project.group = 'eu.h2020.symbiote'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+// dependencies section
+repositories {
+    mavenCentral()
+    maven { url "https://jitpack.io" }
+}
+
+// Spring related configs
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+/*
+Forces dependencies' cache invalidation for each build for dependencies marked with
+    { changing = true }
+    e.g.
+    compile('com.github.symbiote-h2020:SymbIoTeLibraries:develop-SNAPSHOT'){ changing = true }
+ */
+configurations.all {
+    // check for updates every build
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+}
+
+dependencies {
+    /* SymbIoTeLibraries manual:
+        One can use the library from jitpack by default with the notation:
+            compile('com.github.symbiote-h2020:SymbIoTeLibraries:develop-SNAPSHOT') {changing = true }
+        or having cloned locally the SymbIoTeLibraries repo use it directly with project dependency by:
+            compile project(':SymbIoTeLibraries')
+        Important --- In order to use the latter you need to:
+            1) switch comments on the artifact and project dependencies
+            2) always have only one uncommented
+            3) project dependency requires changes in settings.gradle file in this project
+            4) never commit build.gradle which has project dependencies active as it will break CI builds
+    */
+
+    compile('com.github.symbiote-h2020:SymbIoTeLibraries:5.37+') { changing = true }
+
+    // Spring
+    compile('org.springframework.cloud:spring-cloud-starter-config')
+    compile('org.springframework.cloud:spring-cloud-starter-eureka')
+    compile('org.springframework.cloud:spring-cloud-starter-zipkin')
+    compile('org.springframework.boot:spring-boot-starter-amqp')
+    compile("org.springframework.boot:spring-boot-starter-security")
+    compile('org.springframework.boot:spring-boot-starter-data-rest')
+    compile('org.springframework.boot:spring-boot-starter-data-mongodb')
+    compile('org.springframework.boot:spring-boot-starter-mail')
+
+    //swagger
+    implementation group: 'io.springfox', name: 'springfox-swagger-ui', version: '2.8.0'
+    implementation group: 'io.springfox', name: 'springfox-swagger2', version: '2.8.0'
+    implementation group: 'io.springfox', name: 'springfox-core', version: '2.8.0'
+//    compile('io.springfox:springfox-swagger-ui:3.0.0')
+//    compile('io.springfox:springfox-boot-starter:3.0.0')
+
+    // Needed for docker
+    compile('org.springframework.retry:spring-retry')
+    compile('org.springframework.boot:spring-boot-starter-aop')
+
+    // gui page
+    compile('org.springframework.boot:spring-boot-starter-thymeleaf')
+    compile('org.webjars:jquery:3.2.1')
+    compile('org.webjars:bootstrap:3.3.7-1')
+
+    // other
+    compile('commons-validator:commons-validator:1.6')
+    compile('com.google.apis:google-api-services-gmail:v1-rev91-1.23.0')
+    compile('org.eclipse.jgit:org.eclipse.jgit:5.1.3.201810200350-r')
+    
+    // tests only
+    testCompile('junit:junit:4.+')
+//    implementation group: 'org.jacoco', name: 'jacoco-maven-plugin', version: '0.7.9'
+    testCompile('org.springframework.boot:spring-boot-starter-test')
+    testCompile('org.springframework.security:spring-security-test')
+}
+
+// Needed for docker >>>>
+
+// publication
+jar {
+    baseName = 'Administration'
+    version = project.version
+}
+
+bootRepackage {
+    classifier = 'run'
+}
+
+// code quality below
+task generateJavaDocs(type: Javadoc) {
+    source = sourceSets.main.allJava
+    destinationDir = reporting.file("javadocs")
+}
+
+task javadocJar(type: Jar, dependsOn: generateJavaDocs) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = project.group
+            version = project.version
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+
+            // artifact javadocJar
+
+            artifact(file("$libsDir/$project.name-$project.version-${bootRepackage.classifier}.jar")) {
+                classifier "run"
+            }
+        }
+    }
+}
+
+publishToMavenLocal.dependsOn(bootRepackage)
+
+// <<<< Needed for docker
+
+
+// jacoco configuration section
+jacoco {
+    toolVersion = "0.7.9"
+}
+
+jacocoTestReport {
+    reports {
+        xml.enabled = true
+        html.enabled = true
+    }
+}
+
+test {
+    testLogging {
+        // Uncomment the following if you need verbose output in console/Travis
+        // showStandardStreams = true
+        exceptionFormat = 'full'
+    }
+}
+
+// owasp config
+dependencyCheck {
+    outputDirectory = "build/reports/security"
+}
+
+// including code quality extensions into the build
+// check.dependsOn(jacocoTestReport, 'dependencyCheck')
+check.dependsOn(jacocoTestReport)
