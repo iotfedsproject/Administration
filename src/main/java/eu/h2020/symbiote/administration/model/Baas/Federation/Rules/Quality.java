@@ -6,4 +6,11 @@ public class Quality {
 
     @JsonProperty("MinValueFed")
     private Integer minValueFed;
+
+    @Override
+    public String toString() {
+        return "Quality{" +
+                "minValueFed=" + minValueFed +
+                '}';
+    }
 }

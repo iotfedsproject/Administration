@@ -22,7 +22,7 @@ public interface FederationVoteRequestRepository extends MongoRepository<Federat
 //    Optional<FederationWithInvitations> deleteById(String id);
 
     @Query("{'username' : ?0,  'status' : ?1,   'voteAction' : ?2, 'federationId' : ?3}")
-    List<FederationVoteRequest> findAllForUserByStatusFederationAndVoteAction(String username, RequestStatus status, VoteAction voteAction,String federationId);
+    List<FederationVoteRequest> findAllForUserByStatusFederationAndVoteAction(String username, RequestStatus status, VoteAction voteAction, String federationId);
 
     @Query("{'username' : ?0}")
     List<FederationVoteRequest> findAllForUser(String username);
@@ -33,11 +33,12 @@ public interface FederationVoteRequestRepository extends MongoRepository<Federat
     @Query("{'federationId' : ?0}")
     List<FederationVoteRequest> findAllByFederationId(String federationId);
 
-//    List<FederationJoinRequest> findAll();
+    //    List<FederationJoinRequest> findAll();
     List<FederationVoteRequest> findByStatus(RequestStatus status);
 
 //    @Query("{'status':PENDING}")
 //    List<FederationJoinRequest> findAllPending();
 
+    @Query("{'votingId':?0}")
     Optional<FederationVoteRequest> findByVotingId(String votingId);
 }

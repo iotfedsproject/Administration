@@ -21,4 +21,11 @@ public class SmartContract {
 
     public SmartContract() {
     }
+
+    @Override
+    public String toString() {
+        return "SmartContract{" +
+                "ioTFedsRule=" + ioTFedsRule +
+                '}';
+    }
 }

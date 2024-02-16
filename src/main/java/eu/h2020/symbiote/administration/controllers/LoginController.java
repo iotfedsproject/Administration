@@ -37,7 +37,6 @@ public class LoginController {
 
 	    // Checking if the Principal == null also works
 		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-		//TODO getuserinfo at Baas
 		if (!(auth instanceof AnonymousAuthenticationToken)) {
 			log.debug("User is already logged in");
 			log.debug("User authorities = " + auth.getAuthorities());

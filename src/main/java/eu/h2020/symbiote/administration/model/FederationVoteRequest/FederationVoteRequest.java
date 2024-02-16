@@ -1,6 +1,7 @@
 package eu.h2020.symbiote.administration.model.FederationVoteRequest;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import eu.h2020.symbiote.administration.model.Baas.Federation.Rules.IoTFedsRule;
 import eu.h2020.symbiote.administration.model.Baas.Federation.Rules.SmartContract;
@@ -12,12 +13,14 @@ import org.springframework.data.annotation.PersistenceConstructor;
 import javax.validation.constraints.NotNull;
 import java.util.Date;
 
-public class FederationVoteRequest implements Comparable{
+public class FederationVoteRequest implements Comparable {
     @NotNull
     private final String federationId;
     @NotNull
-    private final CoreUser requestingUser;
+//    private final CoreUser requestingUser;
+    private final String requestingUser;
 
+    @JsonIgnore
     private SmartContract smartContract;
 
     @NotNull
@@ -27,6 +30,8 @@ public class FederationVoteRequest implements Comparable{
     private VoteAction voteAction;
     private final Date requestDate;
     private Date handledDate;
+
+    private String username; //this holds the username of the user, the action refers to
 
     public SmartContract getSmartContract() {
         return smartContract;
@@ -44,14 +49,12 @@ public class FederationVoteRequest implements Comparable{
         this.username = username;
     }
 
-    private String username; //this holds the username of the user, the action refers to
-
     public String getFederationId() {
         return federationId;
     }
 
 
-    public CoreUser getRequestingUser() {
+    public String getRequestingUser() {
         return requestingUser;
     }
 
@@ -94,13 +97,14 @@ public class FederationVoteRequest implements Comparable{
     @PersistenceConstructor
     @JsonCreator
     public FederationVoteRequest(@JsonProperty("federationId") String federationId,
-                                 @JsonProperty("requestingUser") CoreUser requestingUser,
+                                 @JsonProperty("requestingUser") String requestingUser,
                                  @JsonProperty("votingId") String votingId,
                                  @JsonProperty("status") RequestStatus status,
                                  @JsonProperty("voteAction") VoteAction voteAction,
                                  @JsonProperty("updatedRules") SmartContract smartContract,
                                  @JsonProperty("requestDate") Date requestDate,
-                                 @JsonProperty("handledDate") Date handledDate) {
+                                 @JsonProperty("handledDate") Date handledDate,
+                                 @JsonProperty("username") String username) {
         this.federationId = federationId;
         this.votingId = votingId;
         this.status = status;
@@ -109,23 +113,26 @@ public class FederationVoteRequest implements Comparable{
         this.handledDate = handledDate;
         this.requestingUser = requestingUser;
         this.smartContract = smartContract;
-        if(this.voteAction != VoteAction.REMOVE_MEMBER)
-            this.username = requestingUser.getValidUsername();
+        this.username = username;
     }
 
-    public FederationVoteRequest(String federationId, CoreUser requestingUser, VoteAction voteAction, Date requestDate) {
-        this(federationId, requestingUser, "", RequestStatus.PENDING, voteAction, new SmartContract(), requestDate, null);
+    public FederationVoteRequest(String federationId, String requestingUser, VoteAction voteAction) {
+        this(federationId, requestingUser, "", RequestStatus.PENDING, voteAction, new SmartContract(), new Date(), null, "");
     }
 
-    public FederationVoteRequest(String federationId, CoreUser requestingUser, SmartContract smartContract, VoteAction voteAction, Date requestDate) {
-        this(federationId, requestingUser, "", RequestStatus.PENDING, voteAction, smartContract, requestDate, null);
+    public FederationVoteRequest(String federationId, String requestingUser, SmartContract smartContract, VoteAction voteAction) {
+        this(federationId, requestingUser, "", RequestStatus.PENDING, voteAction, smartContract, new Date(), null, "");
+    }
+
+    public FederationVoteRequest(String federationId, String requestingUser,VoteAction voteAction, String username) {
+        this(federationId, requestingUser, "", RequestStatus.PENDING, voteAction, new SmartContract(), new Date(), null, username);
     }
 
     @Override
     public String toString() {
         return "FederationJoinRequest{" +
                 "federationId='" + federationId + '\'' +
-                "requestingUser='" + requestingUser.getValidUsername() + '\'' +
+                "requestingUser='" + requestingUser + '\'' +
                 "RequestStatus='" + status.toString() + '\'' +
                 "requestDate='" + requestDate + '\'' +
                 "handledDate='" + handledDate + '\'' +

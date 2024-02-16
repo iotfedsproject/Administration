@@ -198,6 +198,74 @@ public class OwnedServicesService {
         return new ResponseEntity<>(response, new HttpHeaders(), httpStatus);
     }
 
+    public ResponseEntity<ListUserServicesResponse> listUserServices(String username) {
+        //IoTFeds
+        ArrayList<Platform> availablePlatforms = new ArrayList<>();
+        ArrayList<SmartSpace> availableSSPs = new ArrayList<>();
+        ArrayList<String> unavailablePlatforms = new ArrayList<>();
+        ArrayList<String> unavailableSSPs = new ArrayList<>();
+        Set<OwnedService> ownedPlatformDetailsSet = new HashSet<>();
+        Set<OwnedService> ownedSSPDetailsSet = new HashSet<>();
+        String responseMessage;
+        HttpStatus httpStatus;
+
+        UserManagementRequest ownedServiceDetailsRequest = new UserManagementRequest(
+                new Credentials(aaMOwnerUsername, aaMOwnerPassword),
+                new Credentials(username, ""),
+                new UserDetails(
+                        new Credentials(username, ""),
+                        "",
+                        UserRole.NULL,
+                        AccountStatus.ACTIVE,
+                        new HashMap<>(),
+                        new HashMap<>(),
+                        true,
+                        false
+                ),
+                OperationType.CREATE
+        );
+
+        // Get OwnedPlatformDetails from AAM
+        try {
+            Set<OwnedService> ownedServicesSet =
+                    rabbitManager.sendOwnedServiceDetailsRequest(ownedServiceDetailsRequest);
+            if (ownedServicesSet != null) {
+
+                // Distinguish Platforms from SSPs
+                divideServices(ownedServicesSet, ownedPlatformDetailsSet, ownedSSPDetailsSet);
+
+                // Get Platform details from Registry
+                getPlatformDetails(ownedPlatformDetailsSet, unavailablePlatforms, availablePlatforms);
+
+                // Get SSP details from Registry
+                getSSPDetails(ownedSSPDetailsSet, unavailableSSPs, availableSSPs);
+
+                if (unavailablePlatforms.size() == 0 && unavailableSSPs.size() == 0) {
+                    responseMessage = "All the owned service details were successfully received";
+                    httpStatus = HttpStatus.OK;
+                } else {
+                    responseMessage = "Could NOT all the service information";
+                    httpStatus = HttpStatus.PARTIAL_CONTENT;
+                }
+            } else {
+                responseMessage = "AAM responded with null";
+                httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+                log.warn(responseMessage);
+            }
+        } catch (CommunicationException e) {
+            responseMessage = "AAM threw CommunicationException: " + e.getMessage();
+            httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+            log.warn(responseMessage, e);
+        }
+
+        ListUserServicesResponse response = new ListUserServicesResponse(responseMessage,
+                constructAvailablePlatformDetails(availablePlatforms),
+                constructAvailableSSPDetails(ownedSSPDetailsSet, availableSSPs),
+                unavailablePlatforms,
+                unavailableSSPs);
+        return new ResponseEntity<>(response, new HttpHeaders(), httpStatus);
+    }
+
     public ResponseEntity getOwnedPlatformDetails(Principal principal) {
 
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;

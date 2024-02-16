@@ -80,6 +80,7 @@ public class CustomAuthenticationProvider implements AuthenticationProvider {
                     true, grantedAuthorities, "", UserRole.SERVICE_OWNER,
                     true, true, true, "icom", "intern");
 
+//            return new UsernamePasswordAuthenticationToken(user, password, "new");
             return new UsernamePasswordAuthenticationToken(user, password, grantedAuthorities);
         }
 
@@ -87,7 +88,7 @@ public class CustomAuthenticationProvider implements AuthenticationProvider {
         try {
 
             //Check that the user to remove exists in Baas
-            baasService.userExistsCheckThrowException(name);
+//            baasService.userExistsCheckThrowException(name);
             UserDetailsResponse response = rabbitManager.sendLoginRequest(new Credentials(name, password));
 
 //            test
@@ -132,7 +133,8 @@ public class CustomAuthenticationProvider implements AuthenticationProvider {
                 }
             } else
                 throw new AAMProblemException();
-        } catch(CommunicationException | ServiceValidationException e){
+//        } catch(CommunicationException | ServiceValidationException e){
+        } catch(CommunicationException e){
 //        } catch(Exception e){
             log.info(e.getMessage());
         }

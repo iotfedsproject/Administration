@@ -1,13 +1,16 @@
 package eu.h2020.symbiote.administration.services.baas;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import eu.h2020.symbiote.administration.exceptions.validation.ServiceValidationException;
-import eu.h2020.symbiote.administration.model.Baas.Federation.AddFederationBaasResponse;
 import eu.h2020.symbiote.administration.model.Baas.Federation.FedInfo;
-import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithSmartContract;
+import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithOrganization;
 import eu.h2020.symbiote.administration.model.Baas.Federation.RegisterFedToBc;
 import eu.h2020.symbiote.administration.model.Baas.User.BaasUser;
 import eu.h2020.symbiote.administration.model.FederationVoteRequest.FederationVoteRequest;
 import eu.h2020.symbiote.administration.model.UserCreationRequest;
+import eu.h2020.symbiote.security.communication.payloads.UserManagementRequest;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +20,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 
+import java.io.IOException;
+import java.sql.Array;
 import java.util.*;
 
 @Service
@@ -55,219 +60,317 @@ public class BaasService {
     @Value("${baas.getAllFeds.url}")
     private String getAllFedsFromBC;
 
+    @Value("${baas.getFeds.url}")
+    private String getFedsFromBC;
+
     @Value("${baas.leaveFedFromBC.url}")
     private String leaveFedFromBC;
 
     @Value("${baas.registerFedToBc.url}")
     private String registerFedToBcUrl;
 
+    @Value("${baas.updateRulesRequestUrl.url}")
+    private String updateRulesRequestUrl;
+
+    @Value("${baas.registerUserUrl.url}")
+    private String registerUserUrl;
+
+    @Value("${baas.deleteUserUrl.url}")
+    private String deleteUserUrl;
+
+    @Value("${baas.deleteFederation.url}")
+    private String deleteFederation;
+
     @Autowired
     private BaasClient baasClient;
 
-    private static Log log = LogFactory.getLog(BaasService.class);
+    private static final Log log = LogFactory.getLog(BaasService.class);
 
-    public ResponseEntity<?> makeAddMemberToFederationBaasRequest(FederationVoteRequest voteRequest){
+    //    Vote request to add a member to a federation
+//    not tested
+    public ResponseEntity<String> makeAddMemberToFederationBaasRequest(FederationVoteRequest voteRequest) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("user_id", voteRequest.getRequestingUser().getUsername());
-        parameters.add("fed_id", voteRequest.getFederationId());
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        HashMap<String, String> body = new HashMap<>();
 
-        String body = "";
+        body.put("member_id", voteRequest.getUsername());
+        body.put("requestor_id", voteRequest.getRequestingUser());
+        body.put("fed_id", voteRequest.getFederationId());
 
-        return baasClient.makeBaasHttpRequest(baasBaseUrl, addFedMemberRequestUrl, HttpMethod.POST , body, headers, parameters, AddFederationBaasResponse.class);
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, addFedMemberRequestUrl, HttpMethod.POST, body, parameters);
+    }
+    public ResponseEntity<String> makeJoinMemberToFederationBaasRequest(FederationVoteRequest voteRequest) {
+
+        ObjectMapper mapper = new ObjectMapper();
+        ResponseEntity<String> response = getFederationInfoBaas(voteRequest.getFederationId());
+        FedInfo fedInfo;
+        try {
+            fedInfo = mapper.readValue(response.getBody(), FedInfo.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
+
+        HashMap<String, String> body = new HashMap<>();
+
+        body.put("member_id", voteRequest.getUsername());
+        body.put("requestor_id", fedInfo.getCreatorId());
+        body.put("fed_id", voteRequest.getFederationId());
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, addFedMemberRequestUrl, HttpMethod.POST, body, parameters);
     }
 
-    public ResponseEntity<?> makeDeleteMemberOfFederationBaasRequest(FederationVoteRequest voteRequest){
+    //    Vote request to delete a member from a federation
+//    Requested comments
+//    not tested
+    public ResponseEntity<String> makeDeleteMemberOfFederationBaasRequest(FederationVoteRequest voteRequest) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("user_id", voteRequest.getRequestingUser().getUsername());
-        parameters.add("fed_id", voteRequest.getFederationId());
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        HashMap<String, String> body = new HashMap<>();
 
-        String body = "";
+        body.put("user_id", voteRequest.getUsername());
+        body.put("requestor_id", voteRequest.getRequestingUser());
+        body.put("fed_id", voteRequest.getFederationId());
 
-        return baasClient.makeBaasHttpRequest(baasBaseUrl, removeFedMemberRequestUrl, HttpMethod.POST , body, headers, parameters, AddFederationBaasResponse.class);
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, removeFedMemberRequestUrl, HttpMethod.POST, body, parameters);
     }
 
-    public ResponseEntity<?> makeUpdateRulesOfFederationBaasRequest(FederationVoteRequest voteRequest){
+    //    Vote request to change fed rules
+
+    public ResponseEntity<String> makeUpdateRulesOfFederationBaasRequest(FederationVoteRequest voteRequest) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("user_id", voteRequest.getRequestingUser().getUsername());
-        parameters.add("fed_id", voteRequest.getFederationId());
-        parameters.add("new_rules",voteRequest.getSmartContract().toString());
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        HashMap<String, String> body = new HashMap<>();
 
-        String body = "";
+        body.put("user_id", voteRequest.getRequestingUser());
+        body.put("fed_id", voteRequest.getFederationId());
+        body.put("new_rules", voteRequest.getSmartContract().toString());
 
-        return baasClient.makeBaasHttpRequest(baasBaseUrl, removeFedMemberRequestUrl, HttpMethod.POST , body, headers, parameters, AddFederationBaasResponse.class);
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, updateRulesRequestUrl, HttpMethod.POST, body, parameters);
     }
 
-    public ResponseEntity<?> makeDeleteFederationBaasRequest(FederationVoteRequest voteRequest){
+    // Make a vote request to delete a member
+    public ResponseEntity<String> makeDeleteFederationBaasRequest(FederationVoteRequest voteRequest) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-//        parameters.add("platform_id", voteRequest.getRequestingPlatformId());
-        parameters.add("fed_id", voteRequest.getFederationId());
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        HashMap<String, String> body = new HashMap<>();
 
-        String body = "";
+        body.put("fed_id", voteRequest.getFederationId());
+        body.put("request_user_id", voteRequest.getRequestingUser());
 
-        return baasClient.makeBaasHttpRequest(baasBaseUrl, removeFedMemberRequestUrl, HttpMethod.DELETE , body, headers, parameters, AddFederationBaasResponse.class);
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, removeFedMemberRequestUrl, HttpMethod.DELETE, body, parameters);
+    }
+    // Delete a federation from baas
+    public ResponseEntity<String> deleteFederationBaasRequest(String federationId, String userId) {
+        MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
+
+        HashMap<String, String> body = new HashMap<>();
+
+        body.put("fed_id", federationId);
+        body.put("request_user_id", userId);
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, deleteFederation, HttpMethod.DELETE, body, parameters);
     }
 
-    public ResponseEntity<?> getFederationInfoBaas(String federationId){
+    //Get info for a federation
+    public ResponseEntity<String> getFederationInfoBaas(String federationId) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
         parameters.add("fed_id", federationId);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
+        HashMap<String, String> body = new HashMap<>();
 
-        return baasClient.makeBaasHttpRequest(baasBaseUrl, removeFedMemberRequestUrl, HttpMethod.GET , body, headers, parameters, AddFederationBaasResponse.class);
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, getFedsFromBC, HttpMethod.GET, body, parameters);
     }
 
-    private ResponseEntity<?> getAllUsersBaasResponse(){
+    //Info for all users
+    public ResponseEntity<String> getAllUsersBaasResponse() {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, getAllUsersRequestUrl, HttpMethod.GET , body, headers, parameters, BaasUser[].class);
-        return response;
+        HashMap<String, String> body = new HashMap<>();
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, getAllUsersRequestUrl, HttpMethod.GET, body, parameters);
     }
 
-    public ResponseEntity<?> getUserInfoBaasResponse(String username){
+    // Info for a user
+    public ResponseEntity<String> getUserInfoBaasResponse(String username) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
         parameters.add("user_id", username);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, getUserInfoRequestUrl, HttpMethod.GET , body, headers, parameters, BaasUser.class);
-        return response;
+        HashMap<String, String> body = new HashMap<>();
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, getUserInfoRequestUrl, HttpMethod.GET, body, parameters);
     }
 
-    public ResponseEntity<?> registerUserToBcBaasRequest(UserCreationRequest request){
+    // Register the user
+    public ResponseEntity<String> registerUserToBcBaasRequest(UserCreationRequest request) {
 
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("id", request.getValidUsername());
-        parameters.add("role", request.getIotfedsrole());
-        parameters.add("mail", request.getRecoveryMail());
-        parameters.add("organization", request.getOrganization());
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+        HashMap<String, String> body = new HashMap<>();
 
-        String body = "";
+        body.put("id", request.getValidUsername());
+        body.put("role", request.getIotfedsrole());
+        body.put("mail", request.getRecoveryMail());
+        body.put("organization", request.getOrganization());
 
-        return baasClient.makeBaasHttpRequest(baasBaseUrl, addFedMemberRequestUrl, HttpMethod.POST , body, headers, parameters, AddFederationBaasResponse.class);
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, registerUserUrl, HttpMethod.POST, body, parameters);
     }
 
-    public boolean checkIfUserIsInFederationInBaas(String username, String federationId){
-        FedInfo fedInfo = (FedInfo)getFederationInfoBaas(federationId).getBody();
-        return fedInfo.getMemberIds().contains(username);
-    }
+    // Delete the user
+    public ResponseEntity<String> deleteUserToBcBaasRequest(String userId) {
 
-    public ResponseEntity<?> registerPlatformToBaas(String username, String platformId){
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("platform_id ", platformId);
-        parameters.add("assoc_user_id ", username);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, registerPlatformToBC, HttpMethod.PATCH , body, headers, parameters, BaasUser.class);
-        return response;
+        HashMap<String, String> body = new HashMap<>();
+
+        body.put("user_id", userId);
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, deleteUserUrl, HttpMethod.DELETE, body, parameters);
     }
+    // Register the user
+    public ResponseEntity<String> registerUserToBcBaasRequest(UserManagementRequest request) {
 
-    public ResponseEntity<?> deletePlatformFromBaas(String username, String platformId){
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("platform_id ", platformId);
-        parameters.add("assoc_user_id ", username);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, deletePlatformFromBC, HttpMethod.PATCH , body, headers, parameters, BaasUser.class);
-        return response;
+        HashMap<String, String> body = new HashMap<>();
+
+        body.put("id", request.getUserDetails().getCredentials().getUsername());
+        body.put("role", "tester");
+        body.put("mail", request.getUserDetails().getRecoveryMail());
+        body.put("organization", "ICOM");
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, registerUserUrl, HttpMethod.POST, body, parameters);
     }
 
-    public ResponseEntity<?> registerResourceToBaas(String username, String platformId, String resourceId){
+    public ResponseEntity<String> registerPlatformToBaas(String username, String platformId) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("device_id  ", resourceId);
-        parameters.add("platform_id ", platformId);
-        parameters.add("associated_user_id  ", username);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
-        HashMap<String, List<String>> assosiated_users = new HashMap<String, List<String>>();
-        assosiated_users.put(username, new ArrayList<>());
-        body = assosiated_users.toString();
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, registerResourceToBC, HttpMethod.PATCH , body, headers, parameters, BaasUser.class);
-        return response;
+        HashMap<String, String> body = new HashMap<>();
+
+        body.put("platform_id", platformId);
+        body.put("assoc_user_id", username);
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, registerPlatformToBC, HttpMethod.POST, body, parameters);
     }
 
-    public ResponseEntity<?> deleteResourceFromBaas(String resourceId){
+    public ResponseEntity<String> deletePlatformFromBaas(String username, String platformId) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("device_id  ", resourceId);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, registerResourceToBC, HttpMethod.PATCH , body, headers, parameters, BaasUser.class);
-        return response;
+        HashMap<String, String> body = new HashMap<>();
+        body.put("platform_id", platformId);
+        body.put("assoc_user_id", username);
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, deletePlatformFromBC, HttpMethod.DELETE, body, parameters);
     }
 
-    public ResponseEntity<?> getAllFedsFromBaas(){
+    public ResponseEntity<String> registerResourceToBaas(String platformId, String resourceId) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        String body = "";
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, getAllFedsFromBC, HttpMethod.GET , body, headers, parameters, FedInfo[].class);
-        return response;
+        HashMap<String, String> body = new HashMap<>();
+        body.put("device_id", resourceId);
+        body.put("platform_id", platformId);
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, registerResourceToBC, HttpMethod.POST, body, parameters);
     }
 
-    public ResponseEntity<?> leaveFedToBaas(String username, String federationId){
+    public ResponseEntity<String> deleteResourceFromBaas(String platformId, String resourceId) {
         MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
-        parameters.add("fed_id ", federationId);
-        parameters.add("user_id", username);
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
 
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, leaveFedFromBC, HttpMethod.DELETE , "", headers, parameters, BaasUser.class);
+        HashMap<String, String> body = new HashMap<>();
+        body.put("device_id", resourceId);
+        body.put("platform_id", platformId);
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, registerResourceToBC, HttpMethod.DELETE, body, parameters);
+    }
+
+    //done
+    public ResponseEntity<String> getAllFedsFromBaas() {
+        MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
+
+        HashMap<String, String> body = new HashMap<>();
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, getAllFedsFromBC, HttpMethod.GET, body, parameters);
+    }
+
+    public ResponseEntity<String> leaveFedToBaas(String username, String federationId) {
+        MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
+
+        HashMap<String, String> body = new HashMap<>();
+
+        body.put("fed_id", federationId);
+        body.put("user_id", username);
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, leaveFedFromBC, HttpMethod.DELETE, body, parameters);
+    }
+
+    //TODO: not validated yet
+    public ResponseEntity<String> registerFedToBc(FederationWithOrganization federation, String username) {
+        ObjectMapper mapper = new ObjectMapper();
+        ResponseEntity<String> baasResponse = getUserInfoBaasResponse(username);
+        if (baasResponse.getStatusCode() != HttpStatus.OK) {
+            log.error("Baas status for the request is " + baasResponse.getStatusCode());
+            return new ResponseEntity<String>(baasResponse.getBody(), HttpStatus.BAD_REQUEST);
+        }
+        BaasUser baasUser;
+        try {
+            baasUser = mapper.readValue(baasResponse.getBody(), BaasUser.class);
+        } catch (IOException e) {
+            return new ResponseEntity<String>("Error decoding user", HttpStatus.BAD_REQUEST);
+        }
+        RegisterFedToBc registerFedToBc = new RegisterFedToBc(
+                federation.getId(),
+                username,
+                new ArrayList<>(),
+                federation.getInformationModel().getId(),
+                federation.getSmartContract(),
+                baasUser.getOrganization(),
+                baasUser.getEmail()
+        );
+
+        ObjectWriter ow = new ObjectMapper().writer();
+        ResponseEntity<String> response = null;
+
+        try {
+            response = baasClient.makeBaasHttpRequest2(baasBaseUrl, registerFedToBcUrl, HttpMethod.POST, ow.writeValueAsString(registerFedToBc), null);
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
         return response;
     }
 
-    public ResponseEntity<?> registerFedToBc(FederationWithSmartContract federation, String username){
-
-        RegisterFedToBc registerFedToBc = new RegisterFedToBc(federation.getId(), username, new ArrayList<>(),federation.getSmartContract().toString(), federation.getSmartContract());
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-
-        ResponseEntity<?>  response = baasClient.makeBaasHttpRequest(baasBaseUrl, registerFedToBcUrl, HttpMethod.POST , registerFedToBc.toString(), headers, null, BaasUser.class);
-        return response;
-    }
     //Checks
     public void userExistsCheckThrowException(String userName) throws ServiceValidationException {
         Map<String, String> responseBody = new HashMap<>();
-        ResponseEntity<?> response = getUserInfoBaasResponse(userName);
-        if (!(response.getStatusCode() == HttpStatus.OK)){
-            if (response.getStatusCode() == HttpStatus.BAD_REQUEST){
+        ResponseEntity<String> response = getUserInfoBaasResponse(userName);
+        if (!(response.getStatusCode() == HttpStatus.OK)) {
+            if (response.getStatusCode() == HttpStatus.BAD_REQUEST) {
                 log.debug("The user " + userName + " does not exist in Baas!");
-                responseBody.put("error", "The requested federation does not exist!");
-            }
-            else {
+                responseBody.put("error", "The user " + userName + " does not exist in Baas!");
+            } else {
                 log.debug(response.getBody());
-                responseBody.put("error", response.getBody().toString());
+                responseBody.put("error", response.getBody());
             }
             throw new ServiceValidationException(null, responseBody);
         }
     }
+
+    public ResponseEntity<String> checkConnection() {
+
+        return baasClient.makeBaasHttpRequest(baasBaseUrl, getUserInfoRequestUrl, HttpMethod.OPTIONS, null, null);
+    }
+
+    public boolean checkIfUserIsInFederationInBaas(String username, String federationId) {
+
+        FedInfo fedInfo = new FedInfo();
+        ObjectMapper mapper = new ObjectMapper();
+        try {
+            fedInfo = mapper.readValue(getFederationInfoBaas(federationId).getBody(), FedInfo.class);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return fedInfo.getMemberIds().contains(username);
+    }
+
 }

@@ -1,32 +1,40 @@
 package eu.h2020.symbiote.administration.model.Baas.Federation;
 
-import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.Map;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AddFederationBaasResponse {
-    private String voting_id;
-    private List<String> voter_ids;
 
-    public AddFederationBaasResponse(String voting_id, List<String> voter_ids) {
-        this.voting_id = voting_id;
-        this.voter_ids = voter_ids;
+    @JsonProperty("ID")
+    private String votingId;
+
+    @JsonProperty("votes")
+    private Map<String,String> votersStatus;
+
+    public AddFederationBaasResponse(String votingId, Map<String,String> votersStatus) {
+        this.votingId = votingId;
+        this.votersStatus = votersStatus;
     }
 
     public AddFederationBaasResponse() {
     }
 
-    public String getVoting_id() {
-        return voting_id;
+    public String getVotingId() {
+        return votingId;
     }
 
-    public void setVoting_id(String voting_id) {
-        this.voting_id = voting_id;
+    public void setVotingId(String votingId) {
+        this.votingId = votingId;
     }
 
-    public List<String> getVoter_ids() {
-        return voter_ids;
+    public Map<String, String> getVotersStatus() {
+        return votersStatus;
     }
 
-    public void setVoter_ids(List<String> voter_ids) {
-        this.voter_ids = voter_ids;
+    public void setVotersStatus(Map<String, String> votersStatus) {
+        this.votersStatus = votersStatus;
     }
 }

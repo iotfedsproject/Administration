@@ -1,8 +1,15 @@
 package eu.h2020.symbiote.administration;
 
 import eu.h2020.symbiote.administration.helpers.AuthorizationServiceHelper;
+import eu.h2020.symbiote.administration.model.Baas.Federation.Rules.SmartContract;
+import eu.h2020.symbiote.administration.model.CoreUser;
+import eu.h2020.symbiote.administration.model.FederationVoteRequest.FederationVoteRequest;
 import eu.h2020.symbiote.administration.model.FederationWithInvitations;
+import eu.h2020.symbiote.administration.model.enums.RequestStatus;
+import eu.h2020.symbiote.administration.model.enums.VoteAction;
+import eu.h2020.symbiote.administration.repository.FederationVoteRequestRepository;
 import eu.h2020.symbiote.security.commons.SecurityConstants;
+import org.json.simple.parser.ParseException;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockitoAnnotations;
@@ -17,8 +24,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
 import javax.servlet.Filter;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.*;
@@ -59,6 +68,9 @@ public class GenericControllerTests extends AdministrationBaseTestClass {
 
     @Autowired
     private WebApplicationContext wac;
+
+    @Autowired
+    private FederationVoteRequestRepository federationVoteRequestRepository;
 
     @Autowired
     private Filter springSecurityFilterChain;
@@ -183,10 +195,83 @@ public class GenericControllerTests extends AdministrationBaseTestClass {
                 .andExpect(jsonPath("$.website").value(website));
     }
 
-    private void storeFederations() {
+    @Test
+    public void voteResults() throws Exception {
+        storeVoteRequests();
+//        String dummyPlatformId = "dummyPlatformId";
+
+//        when(authorizationService.generateServiceResponse()).thenReturn(new ResponseEntity<>(serviceResponse, HttpStatus.OK));
+//        when(authorizationService.checkJoinedFederationsRequest(eq(dummyPlatformId), any(), eq(serviceResponse)))
+//                .thenReturn(new ResponseEntity(HttpStatus.OK));
+
+        mockMvc.perform(post("/administration/generic/result")
+                .param("votingId", "dummy1")
+                .param("status", RequestStatus.ACCEPTED.name()))
+                .andExpect(status().isOk());
+
+//        verify(authorizationService, times(1)).generateServiceResponse();
+//        verify(authorizationService, times(1)).checkJoinedFederationsRequest(eq(dummyPlatformId), any(), eq(serviceResponse));
+    }
+
+    private void storeFederations() throws IOException, ParseException {
         FederationWithInvitations federationWithInvitations1 = sampleSavedFederationWithSinglePlatform();
         FederationWithInvitations federationWithInvitations2 = sampleSavedFederation();
 
         federationRepository.save(new ArrayList<>(Arrays.asList(federationWithInvitations1, federationWithInvitations2)));
     }
+
+    private void storeVoteRequests() {
+
+        FederationVoteRequest federationVoteRequestAdd = new FederationVoteRequest(
+                "test-federation-add",
+                "dummyUser",
+                "dummy1",
+                RequestStatus.PENDING,
+                VoteAction.ADD_MEMBER,
+                new SmartContract(),
+                new Date(),
+                null,
+                "tolis"
+        );
+        FederationVoteRequest federationVoteRequestRemove = new FederationVoteRequest(
+                "test-federation-remove",
+                "dummyUser",
+                "dummy2",
+                RequestStatus.PENDING,
+                VoteAction.ADD_MEMBER,
+                new SmartContract(),
+                new Date(),
+                null,
+                "tolis"
+        );
+        FederationVoteRequest federationVoteRequestUpdate = new FederationVoteRequest(
+                "test-federation-update",
+                "dummyUser",
+                "dummy3",
+                RequestStatus.PENDING,
+                VoteAction.ADD_MEMBER,
+                new SmartContract(),
+                new Date(),
+                null,
+                "tolis"
+        );
+        FederationVoteRequest federationVoteRequestDelete = new FederationVoteRequest(
+                "test-federation-delete",
+                "dummyUser",
+                "dummy4",
+                RequestStatus.PENDING,
+                VoteAction.ADD_MEMBER,
+                new SmartContract(),
+                new Date(),
+                null,
+                "tolis"
+        );
+
+        federationVoteRequestRepository.save(federationVoteRequestAdd);
+        federationVoteRequestRepository.save(federationVoteRequestRemove);
+        federationVoteRequestRepository.save(federationVoteRequestUpdate);
+        federationVoteRequestRepository.save(federationVoteRequestDelete);
+
+    }
+
 }

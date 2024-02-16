@@ -31,6 +31,7 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -61,6 +62,7 @@ public class UserServiceImpl implements UserService {
     private String aaMOwnerPassword;
     private Integer tokenExpirationTimeInHours;
     private Boolean emailVerificationEnabled;
+    private boolean baasIntegration;
 
     @Autowired
     public UserServiceImpl(RabbitManager rabbitManager,
@@ -70,7 +72,8 @@ public class UserServiceImpl implements UserService {
                            @Value("${aam.deployment.owner.username}") String aaMOwnerUsername,
                            @Value("${aam.deployment.owner.password}") String aaMOwnerPassword,
                            @Value("${verificationToken.expirationTime.hours}") Integer tokenExpirationTimeInHours,
-                           @Value("${symbiote.core.administration.email.verification}") Boolean emailVerificationEnabled) {
+                           @Value("${symbiote.core.administration.email.verification}") Boolean emailVerificationEnabled,
+                           @Value("${symbiote.baas.integration}") boolean baasIntegration) {
         this.rabbitManager = rabbitManager;
         this.tokenRepository = tokenRepository;
         this.eventPublisher = eventPublisher;
@@ -87,6 +90,9 @@ public class UserServiceImpl implements UserService {
 
         Assert.notNull(emailVerificationEnabled, "emailVerificationEnabled can not be null!");
         this.emailVerificationEnabled = emailVerificationEnabled;
+
+        Assert.notNull(baasIntegration,"baasIntegration can not be null!");
+        this.baasIntegration = baasIntegration;
     }
 
     @Override
@@ -153,8 +159,6 @@ public class UserServiceImpl implements UserService {
     @Override
     public void createUserAccount(String jsonRequest)
             throws CommunicationException, GenericHttpErrorException {
-
-        JsonObject jsonObject = new Gson().fromJson(jsonRequest, JsonObject.class);
         UserCreationRequest request = new Gson().fromJson(jsonRequest, UserCreationRequest.class);
         // Construct the UserManagementRequest
         UserManagementRequest userRegistrationRequest = new UserManagementRequest(
@@ -179,6 +183,11 @@ public class UserServiceImpl implements UserService {
             throw new EntityUnreachableException("AAM");
 
         } else if (managementStatus == ManagementStatus.OK) {
+            //Register user to Baas
+            ResponseEntity<String> baasStatus = baasService.registerUserToBcBaasRequest(request);
+            if (baasIntegration && baasStatus.getStatusCode() != HttpStatus.OK) {
+                throw new GenericBadRequestException(baasStatus.getBody());
+            }
             if (emailVerificationEnabled) {
                 try {
                     List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
@@ -193,13 +202,6 @@ public class UserServiceImpl implements UserService {
                     throw new GenericInternalServerErrorException("Could not send verification email");
                 }
             }
-
-            //Register user to Baas
-            ResponseEntity<?> baasStatus = baasService.registerUserToBcBaasRequest(request);
-            if(baasStatus.getStatusCode() == HttpStatus.BAD_REQUEST){
-                throw new GenericBadRequestException("Baas responded as bad request");
-            }
-
         } else if (managementStatus == ManagementStatus.USERNAME_EXISTS) {
             throw new GenericBadRequestException("Username exists!");
         } else
@@ -218,7 +220,7 @@ public class UserServiceImpl implements UserService {
                 new UserDetails(
                         new Credentials(coreUser.getValidUsername(), coreUser.getValidPassword()),
                         coreUser.getRecoveryMail(),
-                        UserRole.SERVICE_OWNER,
+                        coreUser.getRole(),
                         emailVerificationEnabled ? AccountStatus.NEW : AccountStatus.ACTIVE,
                         new HashMap<>(),
                         new HashMap<>(),
@@ -247,10 +249,11 @@ public class UserServiceImpl implements UserService {
             }
 
 //            //Register user to Baas
-//            ResponseEntity<?> baasStatus = baasService.registerUserToBcBaasRequest(request);
-//            if(baasStatus.getStatusCode() == HttpStatus.BAD_REQUEST){
-//                throw new GenericBadRequestException("Baas responded as bad request");
-//            }
+//TODO: Role, organization are static. Ask marios to change the endpoint to use requestUser or extend CoreUser
+            ResponseEntity<?> baasStatus = baasService.registerUserToBcBaasRequest(userRegistrationRequest);
+            if (baasIntegration && baasStatus.getStatusCode() != HttpStatus.OK) {
+                throw new GenericBadRequestException("Baas responded as bad request");
+            }
 
         } else if (managementStatus == ManagementStatus.USERNAME_EXISTS) {
             throw new GenericBadRequestException("Username exists!");
@@ -645,6 +648,11 @@ public class UserServiceImpl implements UserService {
         );
 
         handleUserManagementRequest(userDeleteRequest, errorName);
+        //Delete user from Baas
+        ResponseEntity<?> baasStatus = baasService.deleteUserToBcBaasRequest(userDeleteRequest.getUserDetails().getCredentials().getUsername());
+        if (baasIntegration && baasStatus.getStatusCode() != HttpStatus.OK) {
+            throw new GenericBadRequestException("Baas responded as bad request");
+        }
     }
 
     @Override

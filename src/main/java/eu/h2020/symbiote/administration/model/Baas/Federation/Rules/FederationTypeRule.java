@@ -55,4 +55,14 @@ public class FederationTypeRule {
         Closed,
         Hybrid
     }
+
+    @Override
+    public String toString() {
+        return "FederationTypeRule{" +
+                "federationType=" + federationType +
+                ", dataAvailability=" + dataAvailability +
+                ", serviceType='" + serviceType + '\'' +
+                ", supportedOntologies='" + supportedOntologies + '\'' +
+                '}';
+    }
 }

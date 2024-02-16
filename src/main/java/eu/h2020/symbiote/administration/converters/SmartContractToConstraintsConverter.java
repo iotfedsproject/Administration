@@ -18,7 +18,7 @@ public class SmartContractToConstraintsConverter {
         qoSConstraint.setMetric(QoSMetric.load);
         qoSConstraint.setComparator(Comparator.greaterThanOrEqual);
         qoSConstraint.setDuration(1000);
-        qoSConstraint.setThreshold(new Double(smartContract.getIoTFedsRule().getQualityMetric().getMetric().getQoSPercentage()));
+        qoSConstraint.setThreshold(new Double(smartContract.getIoTFedsRule().getQualityMetric().getQoSPercentage()));
         qoSConstraint.setResourceType("public");
 
 

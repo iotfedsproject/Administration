@@ -24,7 +24,7 @@ public class FederationWithSmartContract extends Federation {
                                        @JsonProperty("public") Boolean isPublic,
                                        @JsonProperty("informationModel") InformationModel informationModel,
                                        @JsonProperty("slaConstraints") List<QoSConstraint> slaConstraints,
-                                       @JsonProperty("smartContract") SmartContract smartContract,
+                                       @JsonProperty("SmartContract") SmartContract smartContract,
                                        @JsonProperty("members") List<FederationMember> members
     ) {
 
@@ -45,5 +45,8 @@ public class FederationWithSmartContract extends Federation {
 
     public void setSmartContract(SmartContract smartContract) {
         this.smartContract = smartContract;
+    }
+
+    public FederationWithSmartContract() {
     }
 }

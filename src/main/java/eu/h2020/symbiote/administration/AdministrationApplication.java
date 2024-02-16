@@ -79,8 +79,10 @@ public class AdministrationApplication {
         public void run(String... args) throws Exception {
             try {
                 this.rabbitManager.initCommunication();
-//                this.gitService.init(cloudConfigRepoUrl, cloudConfigGitPath);
-//                this.gitService.init(enablerConfigRepoUrl, enablerConfigGitPath);
+//                mandatory for the deployed version, but locally fails because it cant communicate with git
+                System.out.println("--------------------- run() ---------------------");
+               this.gitService.init(cloudConfigRepoUrl, cloudConfigGitPath);
+               this.gitService.init(enablerConfigRepoUrl, enablerConfigGitPath);
             } catch (Exception e) {
                 log.error("Exception thrown during initialization of Administration", e);
                 throw e;

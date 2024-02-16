@@ -8,6 +8,10 @@ public class FederationMarketplaceMetric {
 
     @JsonProperty("ChargePolicy")
     private ChargePolicy chargePolicy;
+    @JsonProperty("FedMarketCharge")
+    private Integer fedMarketCharge;
+    @JsonProperty("GlobalMarketCharge")
+    private Integer globalMarketCharge;
     @JsonProperty("FedProduct")
     private FederationProduct federationProduct;
     @JsonProperty("ProfitPolicy")
@@ -15,8 +19,10 @@ public class FederationMarketplaceMetric {
     @JsonProperty("Coin")
     private Currency currency;
 
-    public FederationMarketplaceMetric(ChargePolicy chargePolicy, FederationProduct federationProduct, ProfitPolicy profitPolicy, Currency currency) {
+    public FederationMarketplaceMetric(ChargePolicy chargePolicy,Integer fedMarketCharge ,Integer globalMarketCharge , FederationProduct federationProduct, ProfitPolicy profitPolicy, Currency currency) {
         this.chargePolicy = chargePolicy;
+        this.fedMarketCharge = fedMarketCharge;
+        this.globalMarketCharge = globalMarketCharge;
         this.federationProduct = federationProduct;
         this.profitPolicy = profitPolicy;
         this.currency = currency;
@@ -54,6 +60,22 @@ public class FederationMarketplaceMetric {
         this.currency = currency;
     }
 
+    public Integer getFedMarketCharge() {
+        return fedMarketCharge;
+    }
+
+    public void setFedMarketCharge(Integer fedMarketCharge) {
+        this.fedMarketCharge = fedMarketCharge;
+    }
+
+    public Integer getGlobalMarketCharge() {
+        return globalMarketCharge;
+    }
+
+    public void setGlobalMarketCharge(Integer globalMarketCharge) {
+        this.globalMarketCharge = globalMarketCharge;
+    }
+
     public enum ChargePolicy {
         Free, PerProduct, PerUsage
     }
@@ -67,6 +89,21 @@ public class FederationMarketplaceMetric {
     }
 
     public enum Currency {
-        IoTFeds, Euro, Both
+        IoTFeds, Euro, Both, FedCoin
+    }
+
+    public FederationMarketplaceMetric() {
+    }
+
+    @Override
+    public String toString() {
+        return "FederationMarketplaceMetric{" +
+                "chargePolicy=" + chargePolicy +
+                ", fedMarketCharge=" + fedMarketCharge +
+                ", globalMarketCharge=" + globalMarketCharge +
+                ", federationProduct=" + federationProduct +
+                ", profitPolicy=" + profitPolicy +
+                ", currency=" + currency +
+                '}';
     }
 }

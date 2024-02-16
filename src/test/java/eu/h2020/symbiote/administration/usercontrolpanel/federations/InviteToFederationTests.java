@@ -112,7 +112,8 @@ public class InviteToFederationTests extends UserControlPanelBaseTestClass {
         String dummyPlatform = "dummyPlatform";
         InvitationRequest invitationRequest = new InvitationRequest(
                 federation.getId(),
-                new HashSet<>(Arrays.asList(platform2Id, platform2Id, dummyPlatform))
+                new HashSet<>(Arrays.asList("anasiou"))
+//                new HashSet<>(Arrays.asList(platform2Id, platform2Id, dummyPlatform))
                 );
 
         MockRestServiceServer mockServer =

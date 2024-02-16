@@ -2,6 +2,7 @@ package eu.h2020.symbiote.administration.controllers;
 
 import eu.h2020.symbiote.administration.communication.rabbit.RabbitManager;
 import eu.h2020.symbiote.administration.exceptions.rabbit.CommunicationException;
+import eu.h2020.symbiote.administration.exceptions.validation.ServiceValidationException;
 import eu.h2020.symbiote.administration.model.CoreUser;
 import eu.h2020.symbiote.administration.model.InvitationRequest;
 import eu.h2020.symbiote.administration.model.InvitationRequestWithOrganization;
@@ -172,8 +173,7 @@ public class AdminCpanelController {
     }
 
     @PostMapping("/cpanel/federation_invite")
-//    public ResponseEntity<?> inviteToFederation(@Valid @RequestBody InvitationRequest invitationRequest, Principal principal) {
-    public ResponseEntity<?> inviteToFederation(@Valid @RequestBody InvitationRequestWithOrganization invitationRequest, Principal principal) {
+    public ResponseEntity<?> inviteToFederation(@Valid @RequestBody InvitationRequest invitationRequest, Principal principal) throws ServiceValidationException {
 
         log.debug("POST request on /administration/user/cpanel/federation_invite :" + invitationRequest);
         return federationService.inviteToFederation(invitationRequest, principal,true);

@@ -1,15 +1,21 @@
 package eu.h2020.symbiote.administration.services.federation;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.h2020.symbiote.administration.communication.rabbit.RabbitManager;
+import eu.h2020.symbiote.administration.exceptions.validation.ServiceValidationException;
 import eu.h2020.symbiote.administration.helpers.AuthorizationServiceHelper;
 import eu.h2020.symbiote.administration.model.*;
-import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithSmartContract;
+import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithOrganization;
 import eu.h2020.symbiote.administration.model.Baas.Federation.FedInfo;
 import eu.h2020.symbiote.administration.model.Baas.User.BaasUser;
+import eu.h2020.symbiote.administration.model.FederationVoteRequest.FederationVoteRequest;
+import eu.h2020.symbiote.administration.model.enums.VoteAction;
 import eu.h2020.symbiote.administration.repository.FederationVoteRequestRepository;
 import eu.h2020.symbiote.administration.repository.FederationRepository;
 import eu.h2020.symbiote.administration.services.authorization.AuthorizationService;
 import eu.h2020.symbiote.administration.services.baas.BaasService;
+import eu.h2020.symbiote.administration.services.federationVoteRequest.FederationVoteRequestService;
 import eu.h2020.symbiote.administration.services.infomodel.InformationModelService;
 import eu.h2020.symbiote.administration.services.ownedservices.CheckServiceOwnershipService;
 import eu.h2020.symbiote.administration.services.ownedservices.OwnedServicesService;
@@ -23,6 +29,8 @@ import eu.h2020.symbiote.security.communication.payloads.OwnedService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +39,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.Assert;
 import org.springframework.validation.BindingResult;
 
+import java.io.IOException;
 import java.security.Principal;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -52,6 +61,12 @@ public class FederationService {
     private final AuthorizationService authorizationService;
     private final FederationVoteRequestRepository federationVoteRequestRepository;
     private final BaasService baasService;
+    private final boolean baasIntegration;
+    private final FederationVoteRequestService federationVoteRequestService;
+
+    @Qualifier("objectMapper")
+    @Autowired
+    ObjectMapper mapper;
 
     @Autowired
     public FederationService(RabbitManager rabbitManager,
@@ -64,7 +79,9 @@ public class FederationService {
                              FederationNotificationService federationNotificationService,
                              AuthorizationService authorizationService,
                              FederationVoteRequestRepository federationVoteRequestRepository,
-                             BaasService baasService) {
+                             BaasService baasService,
+                             FederationVoteRequestService federationVoteRequestService,
+                             @Value("${symbiote.baas.integration}") boolean baasIntegration) {
 
         Assert.notNull(rabbitManager, "RabbitManager can not be null!");
         this.rabbitManager = rabbitManager;
@@ -96,27 +113,82 @@ public class FederationService {
         Assert.notNull(federationVoteRequestRepository, "FederationVoteRequestRepository can not be null!");
         this.federationVoteRequestRepository = federationVoteRequestRepository;
 
+        Assert.notNull(federationVoteRequestService, "FederationVoteRequestService can not be null!");
+        this.federationVoteRequestService = federationVoteRequestService;
+
         Assert.notNull(baasService, "BaasService can not be null!");
         this.baasService = baasService;
 
+        Assert.notNull(baasIntegration, "baasIntegration can not be null!");
+        this.baasIntegration = baasIntegration;
     }
 
 
     public ResponseEntity<?> listFederations() {
         // Todo: limit the results only to public federations?
-        Map<String, Federation> federationMap = federationRepository.findAll().stream()
-                .collect(Collectors.toMap(Federation::getId, federation -> federation));
+//        Map<String, Federation> federationMap = federationRepository.findAll().stream()
+//                .collect(Collectors.toMap(Federation::getId, federation -> federation));
+
+        Map<String, FederationWithOrganization> federationMap = new HashMap<>();
+        List<FederationWithInvitations> federationWithInvitationsList = federationRepository.findAll();
+        for (FederationWithInvitations federationWithInvitations : federationWithInvitationsList) {
+
+            ResponseEntity<String> baasResponse = baasService.getFederationInfoBaas(federationWithInvitations.getId());
+            FedInfo fedInfo = new FedInfo();
+            if (baasResponse.getStatusCode() == HttpStatus.OK) {
+                try {
+                    fedInfo = mapper.readValue(baasResponse.getBody(), FedInfo.class);
+                    log.info(fedInfo);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    continue;
+                }
+            }
+
+            FederationWithOrganization federationWithOrganization = new FederationWithOrganization(
+                    federationWithInvitations.getId(),
+                    federationWithInvitations.getLastModified(),
+                    federationWithInvitations.getName(),
+                    true,
+                    federationWithInvitations.getInformationModel(),
+                    federationWithInvitations.getSlaConstraints(),
+                    fedInfo.getSmartContract(),
+                    fedInfo.getMemberIds(),
+                    federationWithInvitations.getOpenInvitations(),
+                    fedInfo.getBalance(),
+                    fedInfo.getReputation()
+            );
+            log.info("Balance: " + federationWithOrganization.getBalance());
+            log.info("Reputation: " + federationWithOrganization.getReputation());
+            log.info("OpenInvitations: " + federationWithOrganization.getOpenInvitations());
+            federationWithOrganization.setMembers(federationWithInvitations.getMembers());
+
+            federationMap.put(
+                    federationWithInvitations.getId(),
+                    federationWithOrganization
+            );
+        }
+
+
         return new ResponseEntity<>(federationMap, new HttpHeaders(), HttpStatus.OK);
     }
 
-    public ResponseEntity<?> createFederation(FederationWithSmartContract federation,
+    //    TODO: not done, test it
+    public ResponseEntity<?> createFederation(FederationWithOrganization federation,
                                               BindingResult bindingResult,
-                                              Principal principal) {
+                                              Principal principal) throws ServiceValidationException {
 
         Map<String, Object> responseBody = new HashMap<>();
 
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
+
+        ResponseEntity<String> connectionResponse = baasService.checkConnection();
+        if (baasIntegration && connectionResponse.getStatusCode() != HttpStatus.OK) {
+            return new ResponseEntity<>(connectionResponse.getBody(), new HttpHeaders(), connectionResponse.getStatusCode());
+        }
+
+        baasService.userExistsCheckThrowException(user.getValidUsername());
 
         if (bindingResult.hasErrors())
             return validationService.getRequestErrors(bindingResult);
@@ -137,37 +209,29 @@ public class FederationService {
         Set<String> ownedPlatforms = ((Set<OwnedService>) ownedPlatformsResponse.getBody()).stream()
                 .map(OwnedService::getServiceInstanceId)
                 .collect(Collectors.toSet());
+        Map<String, List<String>> organizationPlatforms = new HashMap<>();
+        // Checking if organizations exist
+        for (String member : federation.getOrganizationMembers()) {
+            if (member.equals(user.getValidUsername())){
+                continue;
+            }
+            ResponseEntity<String> registryResponse = baasService.getUserInfoBaasResponse(member);
 
-        // Filtering the same platforms
-        Set<String> memberIds = federation.getMembers().stream().map(FederationMember::getPlatformId).collect(Collectors.toSet());
-        federation.setMembers(
-                federation.getMembers().stream()
-                        .filter(federationMember -> {
-                            if (memberIds.contains(federationMember.getPlatformId())) {
-                                memberIds.remove(federationMember.getPlatformId());
-                                return true;
-                            } else
-                                return false;
-                        })
-                        .collect(Collectors.toList())
-        );
-
-        // Checking if all the platform members exist
-        for (FederationMember member : federation.getMembers()) {
-            ResponseEntity registryResponse = platformService.getPlatformDetailsFromRegistry(member.getPlatformId());
-
-            if (registryResponse.getStatusCode() == HttpStatus.INTERNAL_SERVER_ERROR) {
-                responseBody.put("error", registryResponse.getBody());
-                return new ResponseEntity<>(responseBody, new HttpHeaders(), registryResponse.getStatusCode());
-
-            } else if (registryResponse.getStatusCode() == HttpStatus.NOT_FOUND) {
-                responseBody.put("error", "The platform with id " + member.getPlatformId() + " was not found");
+            if (registryResponse.getStatusCode() != HttpStatus.OK) {
+                responseBody.put("error", "The organization " + member + " was not found");
                 return new ResponseEntity<>(responseBody, new HttpHeaders(), HttpStatus.BAD_REQUEST);
 
             }
-
-            member.setInterworkingServiceURL(((PlatformRegistryResponse) registryResponse.getBody())
-                    .getBody().getInterworkingServices().get(0).getUrl());
+            BaasUser baasUser;
+            try {
+                baasUser = mapper.readValue(registryResponse.getBody(), BaasUser.class);
+            } catch (IOException e) {
+                return new ResponseEntity<>("Couldn't read user from baas", new HttpHeaders(), HttpStatus.BAD_REQUEST);
+            }
+            organizationPlatforms.put(
+                    baasUser.getId(),
+                    new ArrayList<>(baasUser.getAssociated_platforms().keySet())
+            );
         }
 
         // Checking if the information model exist
@@ -188,21 +252,38 @@ public class FederationService {
             }
         }
 
+
+//        // Filtering the same platforms
+//        //TODO: convert this check
+//        InvitationRequest invitationRequest = new InvitationRequest(
+//                invitationRequestWithOrganization.getFederationId(),
+//                platformFromOrganization
+//        );
+
         // Creating the FederationWithInvitation
         HashMap<String, FederationInvitation> invitations = new HashMap<>();
         ArrayList<FederationMember> newMembers = new ArrayList<>();
-        for (FederationMember member : federation.getMembers()) {
-            if (ownedPlatforms.contains(member.getPlatformId())) {
-                newMembers.add(member);
-            } else {
-                invitations.put(member.getPlatformId(),
+        for (String platform : ownedPlatforms) {
+            ResponseEntity registryResponse = platformService.getPlatformDetailsFromRegistry(platform);
+
+            newMembers.add(new FederationMember(
+                    platform,
+                    ((PlatformRegistryResponse) registryResponse.getBody()).getBody().getInterworkingServices().get(0).getUrl()
+            ));
+        }
+        for (Map.Entry<String, List<String>> set :
+                organizationPlatforms.entrySet()) {
+            for (String platform : set.getValue()) {
+                invitations.put(platform,
                         new FederationInvitation(
-                                member.getPlatformId(),
+                                platform,
                                 FederationInvitation.InvitationStatus.PENDING,
                                 new Date()));
             }
+
         }
 
+        federation.setMembers(newMembers);
         FederationWithInvitations federationWithInvitations = new FederationWithInvitations(
                 federation.getId(),
                 new Date(),
@@ -215,6 +296,11 @@ public class FederationService {
                 invitations
         );
 
+        ResponseEntity<?> baasResponse = baasService.registerFedToBc(federation, user.getValidUsername());
+        if (baasIntegration && baasResponse.getStatusCode() != HttpStatus.OK) {
+            log.error("Baas status for the request is " + baasResponse.getStatusCode());
+            return new ResponseEntity<>(baasResponse.getBody(), new HttpHeaders(), HttpStatus.BAD_REQUEST);
+        }
 
         // Inform the Federation Managers of the platform members
         federationNotificationService.notifyAboutFederationUpdate(federationWithInvitations);
@@ -226,12 +312,7 @@ public class FederationService {
         FederationWithInvitations federationReturned = federationRepository.save(federationWithInvitations);
 
         responseBody.put("message", "Federation Registration was successful!");
-        responseBody.put("federation", federationReturned);
-        ResponseEntity<?> baasResponse = baasService.registerFedToBc(federation, user.getValidUsername());
-        if (baasResponse.getStatusCode() != HttpStatus.OK) {
-            log.warn("Request on Baas was unsuccessful");
-            responseBody.put("error", "Request on Baas was unsuccessful");
-        }
+        responseBody.put("federation", federation);
         return new ResponseEntity<>(responseBody, new HttpHeaders(), HttpStatus.CREATED);
     }
 
@@ -263,6 +344,12 @@ public class FederationService {
             }
         }
 
+        ResponseEntity<?> baasResponse = baasService.deleteFederationBaasRequest(federationIdToDelete, user.getValidUsername());
+        if (baasIntegration && baasResponse.getStatusCode() != HttpStatus.OK) {
+            log.error("Baas status for the request is " + baasResponse.getStatusCode());
+            return new ResponseEntity<>(baasResponse.getBody(), new HttpHeaders(), HttpStatus.BAD_REQUEST);
+        }
+
         federationRepository.deleteById(federationIdToDelete);
 
         // Inform the Federation Managers of the platform members
@@ -283,13 +370,19 @@ public class FederationService {
         Map<String, Object> responseBody = new HashMap<>();
 
         // Get platforms from organization
-        ResponseEntity<?> response = baasService.getUserInfoBaasResponse(organization);
+        ResponseEntity<String> response = baasService.getUserInfoBaasResponse(organization);
         if (response.getStatusCode() != HttpStatus.OK) {
             responseBody.put("error", response.getBody());
             return new ResponseEntity<>(responseBody, new HttpHeaders(), response.getStatusCode());
         }
 
-        BaasUser baasUser = (BaasUser) response.getBody();
+        BaasUser baasUser = null;
+        try {
+            baasUser = mapper.readValue(response.getBody(), BaasUser.class);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new ResponseEntity<>(e.getMessage(), new HttpHeaders(), HttpStatus.BAD_REQUEST);
+        }
         Set<String> platformFromOrganization = baasUser.getAssociated_platforms().keySet();
 
         if (!isAdmin) {
@@ -316,7 +409,7 @@ public class FederationService {
             if (isPlatformMember.getStatusCode() != HttpStatus.OK)
                 return isPlatformMember;
 
-            memberIndexList.add( (Integer) isPlatformMember.getBody());
+            memberIndexList.add((Integer) isPlatformMember.getBody());
 
         }
 
@@ -340,7 +433,7 @@ public class FederationService {
         // Remove platform member
 //        int memberIndex = 1;
         List<FederationMember> platformsLeft = new ArrayList<>();
-        for (int memberIndex: memberIndexList) {
+        for (int memberIndex : memberIndexList) {
             platformsLeft.add(federation.get().getMembers().remove(memberIndex));
         }
 
@@ -368,34 +461,40 @@ public class FederationService {
         return new ResponseEntity<>(responseBody, new HttpHeaders(), HttpStatus.OK);
     }
 
-    public ResponseEntity<?> inviteToFederation(InvitationRequestWithOrganization invitationRequestWithOrganization, Principal principal, boolean isAdmin) {
-//    public ResponseEntity<?> inviteToFederation(InvitationRequest invitationRequest, Principal principal, boolean isAdmin) {
+    public ResponseEntity<?> inviteToFederation(InvitationRequest invitationRequest, Principal principal, boolean isAdmin) throws ServiceValidationException {
 
         Map<String, Object> responseBody = new HashMap<>();
+        String organizationId = null;
 
         // Check if the federation exists
-        Optional<FederationWithInvitations> federation = federationRepository.findById(invitationRequestWithOrganization.getFederationId());
+        Optional<FederationWithInvitations> federation = federationRepository.findById(invitationRequest.getFederationId());
         if (!federation.isPresent()) {
             responseBody.put("error", "The federation does not exist");
             return new ResponseEntity<>(responseBody, new HttpHeaders(), HttpStatus.NOT_FOUND);
         }
 
-        // Get platforms from organization
-        ResponseEntity<?> response = baasService.getUserInfoBaasResponse(invitationRequestWithOrganization.getOrganization());
-        if (response.getStatusCode() != HttpStatus.OK) {
-            responseBody.put("error", response.getBody());
-            return new ResponseEntity<>(responseBody, new HttpHeaders(), response.getStatusCode());
+        Set<String> platformsFromOrganization = new HashSet<>();
+        for (String organization :invitationRequest.getInvitedPlatforms()) {
+            // Get platforms from organization
+            organizationId = organization;
+            ResponseEntity<String> response = baasService.getUserInfoBaasResponse(organization);
+            if (response.getStatusCode() != HttpStatus.OK) {
+                responseBody.put("error", response.getBody());
+                return new ResponseEntity<>(responseBody, new HttpHeaders(), response.getStatusCode());
+            }
+
+            BaasUser baasUser = null;
+            try {
+                baasUser = mapper.readValue(response.getBody(), BaasUser.class);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            platformsFromOrganization.addAll(baasUser.getAssociated_platforms().keySet());
         }
 
-        BaasUser baasUser = (BaasUser) response.getBody();
-        Set<String> platformFromOrganization = baasUser.getAssociated_platforms().keySet();
-
-        // Filtering the same platforms
-        //TODO: convert this check
-        Set<String> memberIds = federation.get().getMembers().stream().map(FederationMember::getPlatformId).collect(Collectors.toSet());
-        InvitationRequest invitationRequest = new InvitationRequest(
-                invitationRequestWithOrganization.getFederationId(),
-                platformFromOrganization
+        invitationRequest = new InvitationRequest(
+                invitationRequest.getFederationId(),
+                platformsFromOrganization
         );
 
         // Check if the user owns a platform in federation
@@ -454,10 +553,42 @@ public class FederationService {
                         new Date()))
                 .collect(Collectors.toSet()));
 
-        // Store the invitations
+        ResponseEntity<?> fedVoteResponse = federationVoteRequestService.makeFederationAddRequest(federation.get().getId(), principal, organizationId);
+        if (baasIntegration && fedVoteResponse.getStatusCode() != HttpStatus.OK) {
+            responseBody.put("error", fedVoteResponse.getBody());
+            return new ResponseEntity<>(fedVoteResponse.getBody(), new HttpHeaders(), fedVoteResponse.getStatusCode());
+        }
+
         federationRepository.save(federation.get());
 
-        responseBody.put(federation.get().getId(), federation.get());
+        ResponseEntity<String> fedResponse = baasService.getFederationInfoBaas(federation.get().getId());
+        if (baasIntegration && fedResponse.getStatusCode() != HttpStatus.OK) {
+            responseBody.put("error", fedResponse.getBody());
+            return new ResponseEntity<>(responseBody, new HttpHeaders(), fedResponse.getStatusCode());
+        }
+        FedInfo fedInfo;
+        try {
+            fedInfo = mapper.readValue(fedResponse.getBody(), FedInfo.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        FederationWithOrganization returnFederation = new FederationWithOrganization(
+                federation.get().getId(),
+                new Date(),
+                federation.get().getName(),
+                federation.get().isPublic(),
+                federation.get().getInformationModel(),
+                federation.get().getSlaConstraints(),
+                fedInfo.getSmartContract(),
+                fedInfo.getMemberIds(),
+                federation.get().getOpenInvitations(),
+                fedInfo.getBalance(),
+                fedInfo.getReputation()
+        );
+        returnFederation.setMembers(federation.get().getMembers());
+
+        responseBody.put(federation.get().getId(), returnFederation);
         return new ResponseEntity<>(responseBody, new HttpHeaders(), HttpStatus.OK);
     }
 
@@ -554,11 +685,20 @@ public class FederationService {
         Map<String, Federation> symbioteFederationMap = federationRepository.findAll().stream()
                 .collect(Collectors.toMap(Federation::getId, federation -> federation));
 
-        ResponseEntity baasResponse = baasService.getAllFedsFromBaas();
+        ResponseEntity<String> baasResponse = baasService.getAllFedsFromBaas();
         if (baasResponse.getStatusCode() != HttpStatus.OK)
             return baasResponse;
-        List<FedInfo> fedInfos = Arrays.asList((FedInfo[]) baasResponse.getBody());
-        List<FedInfo> fedInfosOfVertical = fedInfos.stream().filter(fed ->
+        List<FedInfo> fedInfoList = null;
+        try {
+            fedInfoList = mapper.readValue(baasResponse.getBody(), new TypeReference<List<FedInfo>>() {
+            });
+        } catch (IOException e) {
+            log.error("Mapping values has an error");
+            e.printStackTrace();
+        }
+
+
+        List<FedInfo> fedInfosOfVertical = fedInfoList.stream().filter(fed ->
                 fed.getRelatedApplications().contains(vertical)).collect(Collectors.toList());
 
         List<String> verticalFedsIdList = fedInfosOfVertical

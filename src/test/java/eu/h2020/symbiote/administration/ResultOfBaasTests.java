@@ -7,6 +7,8 @@ import eu.h2020.symbiote.administration.model.FederationVoteRequest.FederationVo
 import eu.h2020.symbiote.administration.model.enums.RequestStatus;
 import eu.h2020.symbiote.administration.model.enums.VoteAction;
 import eu.h2020.symbiote.administration.repository.FederationVoteRequestRepository;
+import eu.h2020.symbiote.administration.services.baas.BaasClient;
+import eu.h2020.symbiote.administration.services.baas.BaasService;
 import eu.h2020.symbiote.administration.services.ownedservices.CheckServiceOwnershipService;
 import eu.h2020.symbiote.model.mim.FederationMember;
 import eu.h2020.symbiote.security.commons.enums.AccountStatus;
@@ -21,15 +23,15 @@ import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.util.Base64Utils;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.context.WebApplicationContext;
 
 import javax.servlet.Filter;
@@ -42,7 +44,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-public class ResultOfBaasTests extends AdministrationBaseTestClass{
+public class ResultOfBaasTests extends AdministrationBaseTestClass {
 
     private MockMvc mockMvc;
 
@@ -69,6 +71,9 @@ public class ResultOfBaasTests extends AdministrationBaseTestClass{
 
     private OwnedService ownedService;
 
+    @Autowired
+    private BaasClient baasClient;
+
     @Before
     public void setup() {
 
@@ -87,7 +92,7 @@ public class ResultOfBaasTests extends AdministrationBaseTestClass{
         voteRequest = new VoteRequest("federation1", "testplatform");
 
         votingId = UUID.randomUUID().toString();
-        baasResponse = new ResponseEntity<>(new AddFederationBaasResponse(votingId, new ArrayList<>()), HttpStatus.OK);
+        baasResponse = new ResponseEntity<>(new AddFederationBaasResponse(votingId, Collections.emptyMap()), HttpStatus.OK);
 
         ownedService = new OwnedService(
                 "platform1",
@@ -113,42 +118,58 @@ public class ResultOfBaasTests extends AdministrationBaseTestClass{
     }
 
     @Test
-    public void HelloWorldTest(){
+    public void HelloWorldTest() {
         assert true;
     }
 
     @Test
-    public void addPlatformToFederationAccepted() throws Exception{
+    public void addPlatformToFederationAccepted() throws Exception {
 
         Set<OwnedService> hash_Set = new HashSet<>();
         hash_Set.add(ownedService);
 
         doReturn(response).when(rabbitManager).sendLoginRequest(any());
-//        doReturn(checkOwnershipResponse).when(checkServiceOwnershipService).checkIfUserOwnsService(any(),any(),any());
+        doReturn(checkOwnershipResponse).when(checkServiceOwnershipService).checkIfUserOwnsService(any(), any(), any());
         doReturn(hash_Set).when(rabbitManager).sendOwnedServiceDetailsRequest(any());
         doNothing().when(rabbitManager).publishFederationUpdate(any());
 
         mockMvc.perform(post("/administration/federation_vote_request/result")
 //                        .header("Content-Type", "application/json")
-                        .headers(getBasicAuthHeaders())
-                        .param("votingId",votingId)
-                        .param("status", String.valueOf(RequestStatus.ACCEPTED)))
+                .headers(getBasicAuthHeaders())
+                .param("votingId", votingId)
+                .param("status", String.valueOf(RequestStatus.ACCEPTED)))
                 .andExpect(status().isOk());
     }
 
     @Test
-    public void addPlatformToFederationRejected() throws Exception{
+    public void addPlatformToFederationRejected() throws Exception {
 
         doReturn(response).when(rabbitManager).sendLoginRequest(any());
 //        doNothing().when(rabbitManager).publishFederationUpdate(any());
 
         mockMvc.perform(post("/administration/federation_vote_request/result")
 //                        .header("Content-Type", "application/json")
-                        .headers (getBasicAuthHeaders())
-                        .param("votingId",votingId)
-                        .param("status", String.valueOf(RequestStatus.REJECTED)))
+                .headers(getBasicAuthHeaders())
+                .param("votingId", votingId)
+                .param("status", String.valueOf(RequestStatus.REJECTED)))
                 .andExpect(status().isOk())
                 .andExpect(content().string("The voting request was rejected"));
+    }
+
+    @Test
+    public void noCommunicationWithBaas() throws Exception {
+
+        String baseUrl = "https://intracom-telecom.com/not/a/valid/url";
+        String getFedInfo = "getFedInfo";
+
+        MultiValueMap<String, String> parameters = new LinkedMultiValueMap<>();
+        parameters.add("fed_id", federationId);
+
+        HashMap<String, String> body = new HashMap<>();
+
+        ResponseEntity responseEntity = baasClient.makeBaasHttpRequest(baseUrl, getFedInfo, HttpMethod.GET, body, parameters);
+        System.out.println(responseEntity.getStatusCode());
+        System.out.println(responseEntity.getBody());
     }
 
     private void addTestFeds() {
@@ -172,7 +193,7 @@ public class ResultOfBaasTests extends AdministrationBaseTestClass{
         CoreUser coreUser = getTestUser();
         coreUser.setValidPassword("password");
         FederationVoteRequest federationVoteRequest = new FederationVoteRequest("federation1",
-                coreUser, votingId, RequestStatus.PENDING, VoteAction.ADD_MEMBER, new SmartContract(), new Date(), new Date());
+                coreUser.getValidUsername(), votingId, RequestStatus.PENDING, VoteAction.ADD_MEMBER, new SmartContract(), new Date(), new Date(), "");
         federationVoteRequestRepository.save(federationVoteRequest);
     }
 
@@ -182,7 +203,7 @@ public class ResultOfBaasTests extends AdministrationBaseTestClass{
 
         return new CoreUser("testuser", "testpassword", true, true,
                 true, true, grantedAuthorities,
-                "test@mail.com", UserRole.USER, true, true, true);
+                "test@mail.com", UserRole.USER, true, true, true, "icom", "intern");
     }
 
 //    private UsernamePasswordAuthenticationToken getTestAuthenticationToken() {
@@ -191,7 +212,7 @@ public class ResultOfBaasTests extends AdministrationBaseTestClass{
 //        return token;
 //    }
 
-    private HttpHeaders getBasicAuthHeaders(){
+    private HttpHeaders getBasicAuthHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.add("Content-Type", "application/json");
         headers.add(HttpHeaders.AUTHORIZATION, "Basic " + Base64Utils.encodeToString("test:test".getBytes()));

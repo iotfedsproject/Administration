@@ -1,7 +1,10 @@
 package eu.h2020.symbiote.administration.controllers;
 
 import eu.h2020.symbiote.administration.model.ServerInformation;
+import eu.h2020.symbiote.administration.model.enums.RequestStatus;
 import eu.h2020.symbiote.administration.services.federation.FederationService;
+import eu.h2020.symbiote.administration.services.federationVoteRequest.FederationVoteRequestService;
+import io.swagger.v3.oas.annotations.Operation;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,11 +22,13 @@ public class GenericController {
 
     private final FederationService federationService;
     private final ServerInformation serverInformation;
+    private final FederationVoteRequestService federationVoteRequestService;
 
     @Autowired
-    public GenericController(FederationService federationService, ServerInformation serverInformation) {
+    public GenericController(FederationService federationService, ServerInformation serverInformation, FederationVoteRequestService federationVoteRequestService) {
         this.federationService = federationService;
         this.serverInformation = serverInformation;
+        this.federationVoteRequestService = federationVoteRequestService;
     }
 
     @PostMapping("/joinedFederations")
@@ -38,5 +43,15 @@ public class GenericController {
     public ServerInformation information() {
         log.debug("POST request on /administration/generic/information");
         return serverInformation;
+    }
+
+    @Operation(summary = "End-point for Baas to return a voting result")
+    @PostMapping("/result")
+    public ResponseEntity<?> receiveVotingResult(
+            @RequestParam String votingId,
+            @RequestParam RequestStatus status) {
+
+        log.debug("Post request on /administration/federation_vote_request/result");
+        return federationVoteRequestService.handleVotingResponse(votingId, status);
     }
 }

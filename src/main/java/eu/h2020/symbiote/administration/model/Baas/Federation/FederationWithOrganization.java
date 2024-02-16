@@ -17,6 +17,8 @@ public class FederationWithOrganization extends Federation {
     private List<String> organizationMembers;
     private SmartContract smartContract;
     private Map<String, FederationInvitation> openInvitations;
+    private Float balance;
+    private Float reputation;
 
     public FederationWithOrganization(@JsonProperty("id") String id,
                                       @JsonProperty("lastModified") Date lastModified,
@@ -26,7 +28,9 @@ public class FederationWithOrganization extends Federation {
                                       @JsonProperty("slaConstraints") List<QoSConstraint> slaConstraints,
                                       @JsonProperty("smartContract") SmartContract smartContract,
                                       @JsonProperty("members") List<String> members,
-                                      @JsonProperty("openInvitations") Map<String, FederationInvitation> openInvitations
+                                      @JsonProperty("openInvitations") Map<String, FederationInvitation> openInvitations,
+                                      @JsonProperty("balance") Float balance,
+                                      @JsonProperty("reputation") Float reputation
     ) {
 
 
@@ -39,6 +43,8 @@ public class FederationWithOrganization extends Federation {
         this.smartContract = smartContract;
         this.organizationMembers = members;
         this.openInvitations = openInvitations != null ? openInvitations : new HashMap<>();
+        this.balance = balance != null ? balance: 0f;
+        this.reputation = reputation != null ? reputation: 0f;
     }
 
     public List<String> getOrganizationMembers() {
@@ -55,5 +61,29 @@ public class FederationWithOrganization extends Federation {
 
     public void setSmartContract(SmartContract smartContract) {
         this.smartContract = smartContract;
+    }
+
+    public Map<String, FederationInvitation> getOpenInvitations() {
+        return openInvitations;
+    }
+
+    public void setOpenInvitations(Map<String, FederationInvitation> openInvitations) {
+        this.openInvitations = openInvitations;
+    }
+
+    public Float getBalance() {
+        return balance;
+    }
+
+    public void setBalance(Float balance) {
+        this.balance = balance;
+    }
+
+    public Float getReputation() {
+        return reputation;
+    }
+
+    public void setReputation(Float reputation) {
+        this.reputation = reputation;
     }
 }

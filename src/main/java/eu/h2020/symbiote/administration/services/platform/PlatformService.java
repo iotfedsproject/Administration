@@ -45,8 +45,9 @@ public class PlatformService {
     private InformationModelService informationModelService;
     private CheckServiceOwnershipService checkServiceOwnershipService;
     private BaasService baasService;
-    private String aaMOwnerUsername;
-    private String aaMOwnerPassword;
+    private final String aaMOwnerUsername;
+    private final String aaMOwnerPassword;
+    private boolean baasIntegration;
 
 
     @Autowired
@@ -57,7 +58,8 @@ public class PlatformService {
                            CheckServiceOwnershipService checkServiceOwnershipService,
                            BaasService baasService,
                            @Value("${aam.deployment.owner.username}") String aaMOwnerUsername,
-                           @Value("${aam.deployment.owner.password}") String aaMOwnerPassword) {
+                           @Value("${aam.deployment.owner.password}") String aaMOwnerPassword,
+                           @Value("${symbiote.baas.integration}") boolean baasIntegration) {
 
         Assert.notNull(rabbitManager,"RabbitManager can not be null!");
         this.rabbitManager = rabbitManager;
@@ -82,6 +84,9 @@ public class PlatformService {
 
         Assert.notNull(aaMOwnerPassword,"aaMOwnerPassword can not be null!");
         this.aaMOwnerPassword = aaMOwnerPassword;
+
+        Assert.notNull(baasIntegration,"baasIntegration can not be null!");
+        this.baasIntegration = baasIntegration;
     }
 
 
@@ -149,7 +154,10 @@ public class PlatformService {
 
                                 //register the platform to baas
                                 ResponseEntity baasResponse = baasService.registerPlatformToBaas(user.getUsername(), platformDetails.getName());
-//                                TODO handle the failure of registering the platform to baas
+                                if (baasIntegration && baasResponse.getStatusCode() != HttpStatus.OK) {
+                                    log.error("Baas status for the request is " + baasResponse.getStatusCode());
+                                    responseBody.put("error", "Request on Baas was unsuccessful");
+                                }
 
                                 return new ResponseEntity<>(new PlatformDetails(registryRequest), new HttpHeaders(), HttpStatus.CREATED);
 
@@ -326,15 +334,15 @@ public class PlatformService {
         CoreUser user = (CoreUser) token.getPrincipal();
         String password = (String) token.getCredentials();
 
+        ResponseEntity<String> connectionResponse = baasService.checkConnection();
+        if (baasIntegration && connectionResponse.getStatusCode() != HttpStatus.OK) {
+            return new ResponseEntity<>(connectionResponse.getBody(), new HttpHeaders(), connectionResponse.getStatusCode());
+        }
+
         ResponseEntity<?> ownedPlatformDetailsResponse = checkServiceOwnershipService.checkIfUserOwnsService(
                 platformIdToDelete, user, OwnedService.ServiceType.PLATFORM);
         if (ownedPlatformDetailsResponse.getStatusCode() != HttpStatus.OK)
             return ownedPlatformDetailsResponse;
-
-        //Delete the platform from baas
-        ResponseEntity baasResponse = baasService.deletePlatformFromBaas(platformIdToDelete, user.getUsername());
-        if(baasResponse.getStatusCode() != HttpStatus.OK && baasResponse.getStatusCode() != HttpStatus.NOT_FOUND)
-            return baasResponse;
 
         // Check with Registry
         try {
@@ -347,6 +355,12 @@ public class PlatformService {
                     log.debug(registryResponse.getMessage());
                     return new ResponseEntity<>(registryResponse.getMessage(),
                             new HttpHeaders(), HttpStatus.valueOf(registryResponse.getStatus()));
+                }
+                //Delete the platform from baas
+                ResponseEntity baasResponse = baasService.deletePlatformFromBaas(user.getUsername(), platformIdToDelete);
+                if (baasIntegration && baasResponse.getStatusCode() != HttpStatus.OK) {
+                    log.error("Baas status for the request is " + baasResponse.getStatusCode());
+                    return new ResponseEntity<>(baasResponse.getBody(), new HttpHeaders(), baasResponse.getStatusCode());
                 }
             } else {
                 String message = "Registry unreachable!";

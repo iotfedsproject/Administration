@@ -45,7 +45,9 @@ public class BaasFederationToSymbioteFederation {
                     convertSmartContractToConstrains(localFed.getSmartContract()),
                     localFed.getSmartContract(),
                     baasFederation.getMemberIds(),
-                    localFed.getOpenInvitations()
+                    localFed.getOpenInvitations(),
+                    baasFederation.getBalance(),
+                    baasFederation.getReputation()
                     )
             );
         }

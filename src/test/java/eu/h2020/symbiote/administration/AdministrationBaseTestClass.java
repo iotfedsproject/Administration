@@ -5,6 +5,7 @@ import eu.h2020.symbiote.administration.communication.rabbit.RabbitManager;
 import eu.h2020.symbiote.administration.config.CustomAuthenticationProvider;
 import eu.h2020.symbiote.administration.exceptions.rabbit.CommunicationException;
 import eu.h2020.symbiote.administration.model.*;
+import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithSmartContract;
 import eu.h2020.symbiote.administration.model.Baas.Federation.Rules.SmartContract;
 import eu.h2020.symbiote.administration.repository.FederationRepository;
 import eu.h2020.symbiote.administration.services.authorization.AuthorizationService;
@@ -25,6 +26,9 @@ import eu.h2020.symbiote.security.communication.payloads.*;
 import eu.h2020.symbiote.security.communication.payloads.OwnedService.ServiceType;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -43,6 +47,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.client.RestTemplate;
 
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.security.cert.CertificateException;
 import java.util.*;
 
@@ -186,13 +193,13 @@ public abstract class AdministrationBaseTestClass {
     CoreUser sampleCoreUser(UserRole role) {
         return new CoreUser(username, password, true, true,
                 true, true, sampleUserAuthorities(), email, role,
-                true, true, true);
+                true, true, true, "icom", "intern");
     }
 
     private CoreUser sampleAdminUser(UserRole role) {
         return new CoreUser(username, password, true, true,
                 true, true, sampleUserAuthorities(), email, role,
-                true, true, true);
+                true, true, true, "icom", "intern");
     }
 
     public Authentication sampleUserAuth(UserRole role) {
@@ -205,8 +212,8 @@ public abstract class AdministrationBaseTestClass {
         return new UsernamePasswordAuthenticationToken(sampleAdminUser(role), null, sampleAdminAuthorities());
     }
 
-    Platform sampleEmptyPlatform(){
-        
+    Platform sampleEmptyPlatform() {
+
 
         Platform platform = new Platform();
         platform.setId(platform1Id);
@@ -215,7 +222,7 @@ public abstract class AdministrationBaseTestClass {
     }
 
     protected ChangePasswordRequest sampleChangePasswordRequest() {
-        return new ChangePasswordRequest(password,"newPassword", "newPassword");
+        return new ChangePasswordRequest(password, "newPassword", "newPassword");
     }
 
     protected ChangeEmailRequest sampleChangeEmailRequest() {
@@ -369,7 +376,7 @@ public abstract class AdministrationBaseTestClass {
     }
 
     protected PlatformConfigurationMessage samplePlatformConfigurationMessage(PlatformConfigurationMessage.Level level,
-                                                                           PlatformConfigurationMessage.DeploymentType deploymentType) {
+                                                                              PlatformConfigurationMessage.DeploymentType deploymentType) {
 
         return new PlatformConfigurationMessage(platform1Id, username, password, componentsKeystorePassword,
                 aamKeystoreName, aamKeystorePassword, "aamPrivateKeyPassword", tokenValidity, true,
@@ -475,7 +482,7 @@ public abstract class AdministrationBaseTestClass {
                 new Credentials(AAMOwnerUsername, AAMOwnerPassword),
                 new Credentials(username, password),
                 new UserDetails(
-                    new Credentials(username, password),
+                        new Credentials(username, password),
                         email,
                         role,
                         AccountStatus.ACTIVE,
@@ -485,14 +492,14 @@ public abstract class AdministrationBaseTestClass {
                         true
                 ),
                 OperationType.CREATE
-            );
+        );
     }
 
     protected UserDetailsResponse sampleActiveUserDetailsResponse(HttpStatus status) {
         return sampleUserDetailsResponse(status, AccountStatus.ACTIVE);
     }
 
-    protected UserDetailsResponse sampleUserDetailsResponse (HttpStatus status, AccountStatus accountStatus) {
+    protected UserDetailsResponse sampleUserDetailsResponse(HttpStatus status, AccountStatus accountStatus) {
         Map<String, Certificate> clients = new HashMap<>();
         try {
             clients.put(clientId1, new Certificate("certificate1String"));
@@ -521,7 +528,7 @@ public abstract class AdministrationBaseTestClass {
                 platform1Url,
                 platform1Name,
                 operationType
-            );
+        );
     }
 
     protected PlatformManagementResponse samplePlatformManagementResponse(ManagementStatus status) {
@@ -529,7 +536,7 @@ public abstract class AdministrationBaseTestClass {
         return new PlatformManagementResponse(
                 platform1Id,
                 status
-            );
+        );
     }
 
     SmartSpaceManagementRequest sampleSmartSpaceManagementRequest(OperationType operationType) {
@@ -561,7 +568,7 @@ public abstract class AdministrationBaseTestClass {
 
     protected Set<OwnedService> sampleOwnedServiceDetails() {
 
-        Map<String, Certificate>  componentCertificates = new HashMap<>();
+        Map<String, Certificate> componentCertificates = new HashMap<>();
         Set<OwnedService> ownedServiceSet = new HashSet<>();
 
         // Platforms
@@ -590,13 +597,22 @@ public abstract class AdministrationBaseTestClass {
         return ownedServiceSet;
     }
 
-    protected Federation sampleFederationRequest() {
-        Federation federation = new Federation();
+    protected FederationWithSmartContract sampleFederationRequest() throws IOException, ParseException {
+
+        // Create a smart contract
+        JSONParser parser = new JSONParser();
+        ObjectMapper mapper = new ObjectMapper();
+
+        JSONObject jsonObject = (JSONObject) parser.parse(new FileReader("src/test/resources/smartContract.json"));
+        SmartContract smartContract = mapper.convertValue(jsonObject, SmartContract.class);
+
+//        Federation federation = new Federation();
+        FederationWithSmartContract federation = new FederationWithSmartContract();
         federation.setId(federationId);
         federation.setInformationModel(sampleInformationModel());
         federation.setName("federationName");
         federation.setPublic(true);
-
+        federation.setSmartContract(smartContract);
 
         QoSConstraint qosConstraint1 = new QoSConstraint();
         qosConstraint1.setMetric(QoSMetric.availability);
@@ -618,12 +634,15 @@ public abstract class AdministrationBaseTestClass {
         return federation;
     }
 
-    protected FederationWithInvitations sampleSavedFederation() {
-        Federation federation = sampleFederationRequest();
+    protected FederationWithInvitations sampleSavedFederation() throws IOException, ParseException {
+        FederationWithSmartContract federation = sampleFederationRequest();
 
         federation.getMembers().get(0).setInterworkingServiceURL(platform1Url);
         federation.getMembers().get(1).setInterworkingServiceURL(platform2Url);
         federation.getMembers().get(2).setInterworkingServiceURL(platform3Url);
+
+        Map<String,FederationInvitation> federationInvitationMap = new HashMap<>();
+        federationInvitationMap.put("test", new FederationInvitation("platform-invited", FederationInvitation.InvitationStatus.PENDING,new Date()));
 
         return new FederationWithInvitations(
                 federation.getId(),
@@ -634,11 +653,11 @@ public abstract class AdministrationBaseTestClass {
                 federation.getSlaConstraints(),
                 new SmartContract(),
                 federation.getMembers(),
-                new HashMap<>());
+                federationInvitationMap);
     }
 
-    protected FederationWithInvitations sampleSavedFederationWithSinglePlatform() {
-        Federation federation = sampleFederationRequest();
+    protected FederationWithInvitations sampleSavedFederationWithSinglePlatform() throws IOException, ParseException {
+        FederationWithSmartContract federation = sampleFederationRequest();
 
         federation.getMembers().get(0).setInterworkingServiceURL(platform1Url);
         federation.getMembers().remove(2);

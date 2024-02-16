@@ -2,7 +2,9 @@ package eu.h2020.symbiote.administration.controllers;
 
 import eu.h2020.symbiote.administration.exceptions.generic.GenericHttpErrorException;
 import eu.h2020.symbiote.administration.exceptions.rabbit.CommunicationException;
+import eu.h2020.symbiote.administration.exceptions.validation.ServiceValidationException;
 import eu.h2020.symbiote.administration.model.*;
+import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithOrganization;
 import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithSmartContract;
 import eu.h2020.symbiote.administration.services.federationVoteRequest.FederationVoteRequestService;
 import eu.h2020.symbiote.administration.services.federation.FederationService;
@@ -325,8 +327,10 @@ public class UserCpanelController {
     @PostMapping("/cpanel/create_federation")
 //    public ResponseEntity<?> createFederation(@Valid @RequestBody Federation federation,
 //                                              BindingResult bindingResult, Principal principal) {
-    public ResponseEntity<?> createFederation(@Valid @RequestBody FederationWithSmartContract federation,
-                                              BindingResult bindingResult, Principal principal) {
+//    public ResponseEntity<?> createFederation(@Valid @RequestBody FederationWithSmartContract federation,
+//                                              BindingResult bindingResult, Principal principal) {
+    public ResponseEntity<?> createFederation(@Valid @RequestBody FederationWithOrganization federation,
+                                              BindingResult bindingResult, Principal principal) throws ServiceValidationException {
 
         log.debug("POST request on /cpanel/create_federation with RequestBody: "
                 + ReflectionToStringBuilder.toString(federation));
@@ -341,19 +345,18 @@ public class UserCpanelController {
     }
 
     @PostMapping("/cpanel/leave_federation")
-//    public ResponseEntity<?> createFederation(@RequestParam String federationId, @RequestParam String platformId,
-//                                              Principal principal) {
-    public ResponseEntity<?> createFederation(@RequestParam String federationId, @RequestParam String organization,
+    public ResponseEntity<?> createFederation(@RequestParam String federationId, @RequestParam String platformId,
                                               Principal principal) {
+//    public ResponseEntity<?> createFederation(@RequestParam String federationId, @RequestParam String organization,
+//                                              Principal principal) {
 
         log.debug("POST request on /cpanel/leave_federation for federationId = "
-                + federationId + " organization = " + organization);
-        return federationService.leaveFederation(federationId, organization, principal, false);
+                + federationId + " organization = " + platformId);
+        return federationService.leaveFederation(federationId, platformId, principal, false);
     }
 
     @PostMapping("/cpanel/federation_invite")
-//    public ResponseEntity<?> inviteToFederation(@Valid @RequestBody InvitationRequest invitationRequest, Principal principal) {
-    public ResponseEntity<?> inviteToFederation(@Valid @RequestBody InvitationRequestWithOrganization invitationRequest, Principal principal) {
+    public ResponseEntity<?> inviteToFederation(@Valid @RequestBody InvitationRequest invitationRequest, Principal principal) throws ServiceValidationException {
 
         log.debug("POST request on /cpanel/federation_invite :" + invitationRequest);
         return federationService.inviteToFederation(invitationRequest, principal, false);

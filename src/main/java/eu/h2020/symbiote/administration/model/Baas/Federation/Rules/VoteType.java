@@ -33,4 +33,15 @@ public class VoteType {
         Board,
         Voters
     }
+
+    public VoteType() {
+    }
+
+    @Override
+    public String toString() {
+        return "VoteType{" +
+                "approvalPercentage=" + approvalPercentage +
+                ", voteTypeBase=" + voteTypeBase +
+                '}';
+    }
 }

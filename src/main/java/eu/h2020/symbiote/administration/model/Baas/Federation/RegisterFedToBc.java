@@ -7,8 +7,8 @@ import java.util.List;
 
 public class RegisterFedToBc {
 
-    @JsonProperty("id")
-    private String id;
+    @JsonProperty("fed_id")
+    private String fed_id;
 
     @JsonProperty("creator_id")
     private String creatorId;
@@ -16,18 +16,27 @@ public class RegisterFedToBc {
     @JsonProperty("related_applications")
     private List<String> relatedApplications;
 
-    @JsonProperty("information_model")
+    @JsonProperty("inf_model")
     private String informationModel;
+
+    @JsonProperty("role")
+    private final String role = "federation";
+
+    @JsonProperty("mail")
+    private String mail;
+
+    @JsonProperty("organization")
+    private String organization;
 
     @JsonProperty("rules")
     private SmartContract smartContract;
 
-    public String getId() {
-        return id;
+    public String getFed_id() {
+        return fed_id;
     }
 
-    public void setId(String id) {
-        this.id = id;
+    public void setFed_id(String fed_id) {
+        this.fed_id = fed_id;
     }
 
     public String getCreatorId() {
@@ -47,7 +56,7 @@ public class RegisterFedToBc {
     }
 
     public String getInformationModel() {
-        return informationModel;
+        return informationModel.toString();
     }
 
     public void setInformationModel(String informationModel) {
@@ -62,11 +71,33 @@ public class RegisterFedToBc {
         this.smartContract = smartContract;
     }
 
-    public RegisterFedToBc(String id, String creatorId, List<String> relatedApplications, String informationModel, SmartContract smartContract) {
-        this.id = id;
+    public String getRole() {
+        return role;
+    }
+
+    public String getMail() {
+        return mail;
+    }
+
+    public void setMail(String mail) {
+        this.mail = mail;
+    }
+
+    public String getOrganization() {
+        return organization;
+    }
+
+    public void setOrganization(String organization) {
+        this.organization = organization;
+    }
+
+    public RegisterFedToBc(String fed_id, String creatorId, List<String> relatedApplications, String informationModel, SmartContract smartContract, String organization, String email) {
+        this.fed_id = fed_id;
         this.creatorId = creatorId;
         this.relatedApplications = relatedApplications;
         this.smartContract = smartContract;
         this.informationModel = informationModel;
+        this.organization = organization;
+        this.mail = email;
     }
 }

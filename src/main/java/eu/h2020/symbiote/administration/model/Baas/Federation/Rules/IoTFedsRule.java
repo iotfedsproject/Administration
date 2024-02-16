@@ -7,7 +7,7 @@ public class IoTFedsRule {
     private FederationTypeRule federationTypeRule;
     @JsonProperty("FedGov")
     private FederationGovernance federationGovernance;
-    @JsonProperty("QualityAssurance")
+    @JsonProperty("QualityAssuranceMetrics")
     private QualityMetric qualityMetric;
     @JsonProperty("FedMarketplace")
     private FederationMarketplaceMetric federationMarketplaceMetric;
@@ -52,5 +52,15 @@ public class IoTFedsRule {
 
     public void setFederationMarketplaceMetric(FederationMarketplaceMetric federationMarketplaceMetric) {
         this.federationMarketplaceMetric = federationMarketplaceMetric;
+    }
+
+    @Override
+    public String toString() {
+        return "IoTFedsRule{" +
+                "federationTypeRule=" + federationTypeRule +
+                ", federationGovernance=" + federationGovernance +
+                ", qualityMetric=" + qualityMetric +
+                ", federationMarketplaceMetric=" + federationMarketplaceMetric +
+                '}';
     }
 }

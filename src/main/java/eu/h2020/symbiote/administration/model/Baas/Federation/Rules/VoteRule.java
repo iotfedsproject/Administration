@@ -28,4 +28,15 @@ public class VoteRule {
     public void setType(VoteType type) {
         this.type = type;
     }
+
+    public VoteRule() {
+    }
+
+    @Override
+    public String toString() {
+        return "VoteRule{" +
+                "tokens=" + tokens +
+                ", type=" + type +
+                '}';
+    }
 }

@@ -1,10 +1,11 @@
 package eu.h2020.symbiote.administration.services.federationVoteRequest;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import eu.h2020.symbiote.administration.communication.rabbit.RabbitManager;
 import eu.h2020.symbiote.administration.exceptions.validation.ServiceValidationException;
 import eu.h2020.symbiote.administration.model.Baas.Federation.AddFederationBaasResponse;
-import eu.h2020.symbiote.administration.model.Baas.Federation.Rules.IoTFedsRule;
 import eu.h2020.symbiote.administration.model.*;
+import eu.h2020.symbiote.administration.model.Baas.Federation.FederationWithSmartContract;
 import eu.h2020.symbiote.administration.model.Baas.Federation.Rules.SmartContract;
 import eu.h2020.symbiote.administration.model.FederationVoteRequest.FederationVoteRequest;
 import eu.h2020.symbiote.administration.model.enums.RequestStatus;
@@ -21,6 +22,7 @@ import eu.h2020.symbiote.security.communication.payloads.OwnedService;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +30,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.stereotype.Component;
 import org.springframework.util.Assert;
 
+import java.io.IOException;
 import java.security.Principal;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -36,7 +39,8 @@ import static eu.h2020.symbiote.administration.converters.SmartContractToConstra
 
 @Component
 public class FederationVoteRequestService {
-    private static Log log = LogFactory.getLog(FederationVoteRequestService.class);
+
+    private static final Log log = LogFactory.getLog(FederationVoteRequestService.class);
     private final RabbitManager rabbitManager;
     private final FederationVoteRequestRepository federationVoteRequestRepository;
     private final BaasService baasService;
@@ -44,44 +48,45 @@ public class FederationVoteRequestService {
     private final CheckServiceOwnershipService checkServiceOwnershipService;
     private final FederationNotificationService federationNotificationService;
     private final OwnedServicesService ownedServicesService;
+    private final boolean baasIntegration;
 
     @Autowired
     public FederationVoteRequestService(RabbitManager rabbitManager, FederationVoteRequestRepository federationVoteRequestRepository,
                                         BaasService baasService, FederationRepository federationRepository, CheckServiceOwnershipService checkServiceOwnershipService,
-                                        FederationNotificationService federationNotificationService, OwnedServicesService ownedServicesService)
-     {
-         Assert.notNull(baasService, "baasService can not be null!");
-         this.baasService = baasService;
-         Assert.notNull(federationVoteRequestRepository, "federationVoteRequestRepository can not be null!");
-         this.federationVoteRequestRepository = federationVoteRequestRepository;
-         Assert.notNull(federationRepository, "federationRepository can not be null!");
-         this.federationRepository = federationRepository;
-         Assert.notNull(checkServiceOwnershipService, "checkServiceOwnershipService can not be null!");
-         this.checkServiceOwnershipService = checkServiceOwnershipService;
-         Assert.notNull(rabbitManager, "rabbitManager can not be null!");
-         this.rabbitManager = rabbitManager;
-         Assert.notNull(federationNotificationService, "federationNotificationService can not be null!");
-         this.federationNotificationService = federationNotificationService;
-         Assert.notNull(ownedServicesService, "ownedServicesService can not be null!");
-         this.ownedServicesService = ownedServicesService;
-     }
+                                        FederationNotificationService federationNotificationService, OwnedServicesService ownedServicesService,
+                                        @Value("${symbiote.baas.integration}") boolean baasIntegration) {
+        Assert.notNull(baasService, "baasService can not be null!");
+        this.baasService = baasService;
+        Assert.notNull(federationVoteRequestRepository, "federationVoteRequestRepository can not be null!");
+        this.federationVoteRequestRepository = federationVoteRequestRepository;
+        Assert.notNull(federationRepository, "federationRepository can not be null!");
+        this.federationRepository = federationRepository;
+        Assert.notNull(checkServiceOwnershipService, "checkServiceOwnershipService can not be null!");
+        this.checkServiceOwnershipService = checkServiceOwnershipService;
+        Assert.notNull(rabbitManager, "rabbitManager can not be null!");
+        this.rabbitManager = rabbitManager;
+        Assert.notNull(federationNotificationService, "federationNotificationService can not be null!");
+        this.federationNotificationService = federationNotificationService;
+        Assert.notNull(ownedServicesService, "ownedServicesService can not be null!");
+        this.ownedServicesService = ownedServicesService;
+        Assert.notNull(baasIntegration, "baasIntegration can not be null!");
+        this.baasIntegration = baasIntegration;
+    }
 
-    public boolean checkIfUserIsInFederation(String userName, String federationId){
+    public boolean checkIfUserIsInFederation(String userName, String federationId) {
         List<FederationVoteRequest> voteRequestsAccepted = federationVoteRequestRepository.findAllForUserByStatusFederationAndVoteAction(userName, RequestStatus.ACCEPTED, VoteAction.ADD_MEMBER, federationId);
         //Check if the user has ever been accepted in the federation
-        if(voteRequestsAccepted.isEmpty())
+        if (voteRequestsAccepted.isEmpty())
             return false;
         List<FederationVoteRequest> voteRequestsRemoved = voteRequestsAccepted.stream().filter(voteRequest ->
                 voteRequest.getVoteAction().equals(VoteAction.REMOVE_MEMBER)).collect(Collectors.toList());
-        if(voteRequestsRemoved.isEmpty())
+        if (voteRequestsRemoved.isEmpty())
             return true;
         List<FederationVoteRequest> voteRequestsAdded = voteRequestsAccepted.stream().filter(voteRequest ->
                 voteRequest.getVoteAction().equals(VoteAction.ADD_MEMBER)).collect(Collectors.toList());
         Collections.sort(voteRequestsRemoved);
         Collections.sort(voteRequestsAdded);
-        if (voteRequestsAdded.get(voteRequestsAdded.size() -1).compareTo(voteRequestsRemoved.get(voteRequestsRemoved.size() -1)) > 0)
-            return true;
-        return false;
+        return voteRequestsAdded.get(voteRequestsAdded.size() - 1).compareTo(voteRequestsRemoved.get(voteRequestsRemoved.size() - 1)) > 0;
     }
 
     private ResponseEntity<?> isPlatformMemberOfFederation(Federation federation, String platformId) {
@@ -109,23 +114,15 @@ public class FederationVoteRequestService {
         return true;
     }
 
-    public ResponseEntity<?> makeFederationJoinRequest(String federationId, HttpHeaders httpHeaders, Principal principal) throws ServiceValidationException {
-        UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken)  principal;
+    public ResponseEntity<?> makeFederationAddRequest(String federationId, Principal principal, String userToAdd) throws ServiceValidationException {
+        UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
-//        final String authorization = httpHeaders.getFirst("Authorization");
-//        String username = "";
-//        if (authorization != null && authorization.toLowerCase().startsWith("basic")) {
-//            // Authorization: Basic base64credentials
-//            String base64Credentials = authorization.substring("Basic".length()).trim();
-//            byte[] credDecoded = Base64.getDecoder().decode(base64Credentials);
-//            String credentials = new String(credDecoded, StandardCharsets.UTF_8);
-//            // credentials = username:password
-//            final String[] values = credentials.split(":", 2);
-//            username = values[0];
-//        }
-//        else {
-////            return new ResponseEntity<String>("Authorization problem", HttpStatus.BAD_REQUEST);
-//        }
+
+        ResponseEntity<String> connectionResponse = baasService.checkConnection();
+        if (baasIntegration && connectionResponse.getStatusCode() != HttpStatus.OK) {
+            return new ResponseEntity<>(connectionResponse.getBody(), new HttpHeaders(), connectionResponse.getStatusCode());
+        }
+
         //Check that the federation exists
         Optional<FederationWithInvitations> federation = federationRepository.findById(federationId);
         federationExistsCheckThrowException(federation);
@@ -136,15 +133,34 @@ public class FederationVoteRequestService {
         //Check if there is such a request pending
         requestCheckThrowException(federationId, user.getValidUsername(), VoteAction.ADD_MEMBER);
 
-        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(federationId, user, VoteAction.ADD_MEMBER, new Date());
+        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(federationId, user.getValidUsername(), VoteAction.ADD_MEMBER);
+        federationVoteRequest.setUsername(userToAdd);
 
-        ResponseEntity<?> baasResponse = baasService.makeAddMemberToFederationBaasRequest(federationVoteRequest);
+        ResponseEntity<String> baasResponse = baasService.makeAddMemberToFederationBaasRequest(federationVoteRequest);
+        log.info("Baas status for the request is " + baasResponse.getStatusCode());
+        return getResponseEntity(federationVoteRequest, baasResponse);
+    }
+
+    public ResponseEntity<?> makeFederationJoinRequest(String federationId, Principal principal) throws ServiceValidationException {
+        UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
+        CoreUser user = (CoreUser) token.getPrincipal();
+
+        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(federationId, user.getValidUsername(), VoteAction.ADD_MEMBER);
+        federationVoteRequest.setUsername(user.getUsername());
+
+        ResponseEntity<String> baasResponse = baasService.makeJoinMemberToFederationBaasRequest(federationVoteRequest);
+        log.info("Baas status for the request is " + baasResponse.getStatusCode());
         return getResponseEntity(federationVoteRequest, baasResponse);
     }
 
     public ResponseEntity<?> deleteUserFromFederationRequest(String userNameToRemove, String federationId, Principal principal) throws ServiceValidationException {
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
+
+        ResponseEntity<String> connectionResponse = baasService.checkConnection();
+        if (baasIntegration && connectionResponse.getStatusCode() != HttpStatus.OK) {
+            return new ResponseEntity<>(connectionResponse.getBody(), new HttpHeaders(), connectionResponse.getStatusCode());
+        }
 
         //Check that the user to remove exists in Baas
         baasService.userExistsCheckThrowException(userNameToRemove);
@@ -156,10 +172,11 @@ public class FederationVoteRequestService {
         //Check if there is such a request pending
         requestCheckThrowException(federationId, userNameToRemove, VoteAction.REMOVE_MEMBER);
 
-        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(federationId, user, VoteAction.REMOVE_MEMBER, new Date());
+        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(federationId, user.getValidUsername(), VoteAction.REMOVE_MEMBER);
         federationVoteRequest.setUsername(userNameToRemove);//The action refers to a different user than the one making the request
 
-        ResponseEntity<?> baasResponse = baasService.makeDeleteMemberOfFederationBaasRequest(federationVoteRequest);
+        ResponseEntity<String> baasResponse = baasService.makeDeleteMemberOfFederationBaasRequest(federationVoteRequest);
+        log.info("Baas status for the request is " + baasResponse.getStatusCode());
         return getResponseEntity(federationVoteRequest, baasResponse);
     }
 
@@ -168,6 +185,11 @@ public class FederationVoteRequestService {
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
 
+        ResponseEntity<String> connectionResponse = baasService.checkConnection();
+        if (baasIntegration && connectionResponse.getStatusCode() != HttpStatus.OK) {
+            return new ResponseEntity<>(connectionResponse.getBody(), new HttpHeaders(), connectionResponse.getStatusCode());
+        }
+
         //Check that the federation exists
         Optional<FederationWithInvitations> federation = federationRepository.findById(federationId);
         federationExistsCheckThrowException(federation);
@@ -175,29 +197,46 @@ public class FederationVoteRequestService {
         //Check if there is such a request pending
         requestCheckThrowException(federationId, user.getValidUsername(), VoteAction.DELETE_FEDERATION);
 
-        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(federationId, user, VoteAction.REMOVE_MEMBER, new Date());
+        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(federationId, user.getValidUsername(), VoteAction.REMOVE_MEMBER);
 
-        ResponseEntity<?> baasResponse = baasService.makeDeleteFederationBaasRequest(federationVoteRequest);
+        ResponseEntity<String> baasResponse = baasService.makeDeleteFederationBaasRequest(federationVoteRequest);
+        log.info("Baas status for the request is " + baasResponse.getStatusCode());
         return getResponseEntity(federationVoteRequest, baasResponse);
     }
 
-    public ResponseEntity<?> updateFederationRulesRequest(SmartContract smartContract, Principal principal, String federationId, String username) throws ServiceValidationException {
+//    public ResponseEntity<?> updateFederationRulesRequest(SmartContract smartContract, Principal principal, String federationId, String username) throws ServiceValidationException {
+    public ResponseEntity<?> updateFederationRulesRequest(Principal principal, FederationWithSmartContract federation) throws ServiceValidationException {
 
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
-        VoteRequest voteRequest = new VoteRequest(federationId, username);
+        VoteRequest voteRequest = new VoteRequest(federation.getId(), user.getValidUsername());
+
+        ResponseEntity<String> connectionResponse = baasService.checkConnection();
+        if (baasIntegration && connectionResponse.getStatusCode() != HttpStatus.OK) {
+            return new ResponseEntity<>(connectionResponse.getBody(), new HttpHeaders(), connectionResponse.getStatusCode());
+        }
 
         //Check that the federation exists
-        Optional<FederationWithInvitations> federation = federationRepository.findById(voteRequest.getFederationId());
-        federationExistsCheckThrowException(federation);
+//        Optional<FederationWithInvitations> federation = federationRepository.findById(voteRequest.getFederationId());
+//        federationExistsCheckThrowException(federation);
 
         //Check if there is such a request pending
         requestCheckThrowException(voteRequest.getFederationId(), user.getValidUsername(), VoteAction.UPDATE_FEDERATION_RULES);
 
-        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(voteRequest.getFederationId(), user, smartContract, VoteAction.REMOVE_MEMBER, new Date());
+        FederationVoteRequest federationVoteRequest = new FederationVoteRequest(
+                voteRequest.getFederationId(),
+                user.getValidUsername(),
+                federation.getSmartContract(),
+                VoteAction.REMOVE_MEMBER);
 
         ResponseEntity<?> baasResponse = baasService.makeUpdateRulesOfFederationBaasRequest(federationVoteRequest);
-        return getResponseEntity(federationVoteRequest, baasResponse);
+        log.info("Baas status for the request is " + baasResponse.getStatusCode());
+//        return getResponseEntity(federationVoteRequest, baasResponse);
+
+        Map<String, Object> responseBody = new HashMap<>();
+        responseBody.put("message", "Your change federation rules request is forwarded to voting procedure");
+        return new ResponseEntity<>(responseBody, new HttpHeaders(), HttpStatus.OK);
+
     }
 
     public ResponseEntity<?> handleVotingResponse(String votingId, RequestStatus status) {
@@ -205,7 +244,7 @@ public class FederationVoteRequestService {
         // Check if the votingId exists
         Optional<FederationVoteRequest> federationVoteRequest = federationVoteRequestRepository.findByVotingId(votingId);
         if (!federationVoteRequest.isPresent()) {
-            log.debug("The votingId does not exist");
+            log.debug("The votingId "+ votingId +" does not exist");
             return responseEntityObject("error", "The votingId does not exist", HttpStatus.NOT_FOUND);
         }
 
@@ -273,11 +312,18 @@ public class FederationVoteRequestService {
         }
     }
 
-    private ResponseEntity<?> getResponseEntity(FederationVoteRequest federationVoteRequest, ResponseEntity<?> baasResponse) {
+    private ResponseEntity<?> getResponseEntity(FederationVoteRequest federationVoteRequest, ResponseEntity<String> baasResponse) {
         if (!(baasResponse.getStatusCode() == HttpStatus.OK))
-            return baasResponse;
-        AddFederationBaasResponse response = (AddFederationBaasResponse) baasResponse.getBody();
-        federationVoteRequest.setVotingId(response.getVoting_id());
+            return new ResponseEntity<>(baasResponse.getBody(), HttpStatus.BAD_REQUEST);
+
+        ObjectMapper mapper = new ObjectMapper();
+        AddFederationBaasResponse response = null;
+        try {
+            response = mapper.readValue(baasResponse.getBody(), AddFederationBaasResponse.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        federationVoteRequest.setVotingId(response.getVotingId());
 
         federationVoteRequestRepository.save(federationVoteRequest);
         return new ResponseEntity<FederationVoteRequest>(federationVoteRequest, HttpStatus.OK);
@@ -285,7 +331,7 @@ public class FederationVoteRequestService {
 
     private ResponseEntity<?> handleAddUserAfterVote(RequestStatus status, FederationVoteRequest federationVoteRequest, FederationWithInvitations federation) {
 
-        ResponseEntity<ListUserServicesResponse> userServicesResponse = ownedServicesService.listUserServices(federationVoteRequest.getRequestingUser());
+        ResponseEntity<ListUserServicesResponse> userServicesResponse = ownedServicesService.listUserServices(federationVoteRequest.getUsername());
         if (userServicesResponse.getStatusCode() != HttpStatus.OK)
             return userServicesResponse;
         List<PlatformDetails> availablePlatforms = userServicesResponse.getBody().getAvailablePlatforms();
@@ -311,18 +357,17 @@ public class FederationVoteRequestService {
             federationVoteRequest.setStatus(status);
             federationVoteRequest.setHandledDate(new Date());
             federationVoteRequestRepository.save(federationVoteRequest);
+
         } catch (Exception e) {
             return responseEntityObject("error", e.getMessage(), HttpStatus.BAD_REQUEST);
         }
-
-
-        return responseEntityObject(federation.getId(), federation, HttpStatus.OK);
-
+//        return responseEntityObject(federation.getId(), federation, HttpStatus.OK);
+        return responseEntityObject("message", "Vote successfully registered", HttpStatus.OK);
     }
 
     private ResponseEntity<?> handleRemoveUserAfterVote(RequestStatus status, FederationVoteRequest federationVoteRequest, FederationWithInvitations federation) {
 
-        ResponseEntity<ListUserServicesResponse> userServicesResponse = ownedServicesService.listUserServices(federationVoteRequest.getRequestingUser());
+        ResponseEntity<ListUserServicesResponse> userServicesResponse = ownedServicesService.listUserServices(federationVoteRequest.getUsername());
         if (userServicesResponse.getStatusCode() != HttpStatus.OK)
             return userServicesResponse;
         List<PlatformDetails> availablePlatforms = userServicesResponse.getBody().getAvailablePlatforms();
@@ -406,7 +451,7 @@ public class FederationVoteRequestService {
         federationVoteRequest.setStatus(status);
         federationVoteRequest.setHandledDate(new Date());
 
-        federation.setSlaConstraints( convertSmartContractToConstrains(federationVoteRequest.getSmartContract()) );
+        federation.setSlaConstraints(convertSmartContractToConstrains(federationVoteRequest.getSmartContract()));
         federationVoteRequestRepository.save(federationVoteRequest);
         federationRepository.save(federation);
 
@@ -417,8 +462,8 @@ public class FederationVoteRequestService {
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
 
-        if(!baasService.checkIfUserIsInFederationInBaas(federationId, user.getUsername()))
-            return new ResponseEntity("You are not a member of " + federationId + " federation!" , HttpStatus.UNAUTHORIZED);
+        if (!baasService.checkIfUserIsInFederationInBaas(federationId, user.getUsername()))
+            return new ResponseEntity("You are not a member of " + federationId + " federation!", HttpStatus.UNAUTHORIZED);
 
         Map<String, Object> responseBody = new HashMap<>();
 
@@ -459,20 +504,20 @@ public class FederationVoteRequestService {
         return new ResponseEntity<>(responseBody, new HttpHeaders(), HttpStatus.OK);
     }
 
-    public ResponseEntity<?> getAllPendingJoinRequestsForUser(Principal principal){
+    public ResponseEntity<?> getAllPendingJoinRequestsForUser(Principal principal) {
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
 
-        List <FederationVoteRequest> voteRequests = federationVoteRequestRepository.findAllForUserByStatusAndVoteAction(user.getValidUsername(),
+        List<FederationVoteRequest> voteRequests = federationVoteRequestRepository.findAllForUserByStatusAndVoteAction(user.getValidUsername(),
                 RequestStatus.PENDING, VoteAction.ADD_MEMBER);
         return new ResponseEntity<>(voteRequests, HttpStatus.OK);
     }
 
-    public ResponseEntity<?> getAllRequestsForUser(Principal principal){
+    public ResponseEntity<?> getAllRequestsForUser(Principal principal) {
         UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) principal;
         CoreUser user = (CoreUser) token.getPrincipal();
 
-        List <FederationVoteRequest> voteRequests = federationVoteRequestRepository.findAllForUser(user.getValidUsername());
+        List<FederationVoteRequest> voteRequests = federationVoteRequestRepository.findAllForUser(user.getValidUsername());
         return new ResponseEntity<>(voteRequests, HttpStatus.OK);
     }
 }
